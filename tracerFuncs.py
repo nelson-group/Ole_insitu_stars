@@ -195,7 +195,7 @@ def createSortedArrays(star_ids,parent_ids,tracer_ids,StarOffsetsInSubs):
     return tracer_ids[order], parent_ids[order], num_TracersPerParent
 
 
-def match(ar1, ar2):
+def match(ar1, ar2, is_sorted = False):
     """ Returns index arrays i1,i2 of the matching elements between ar1 and ar2. While the elements of ar1 
         must be unique, the elements of ar2 need not be. For every matched element of ar2, the return i1 
         gives the index in ar1 where it can be found. For every matched element of ar1, the return i2 gives 
@@ -205,11 +205,14 @@ def match(ar1, ar2):
         bisection search for each element of ar2, therefore O(N_ar1*log(N_ar1) + N_ar2*log(N_ar1)) ~= 
         O(N_ar1*log(N_ar1)) complexity so long as N_ar2 << N_ar1. """
     
-    # need a sorted copy of ar1 to run bisection against
-    index = np.argsort(ar1)
-
+    if not is_sorted:
+        # need a sorted copy of ar1 to run bisection against
+        index = np.argsort(ar1)
+        ar1_sorted = ar1[index]
+    else:
+        ar1_sorted = ar1
+        index = np.arange(ar1.shape[0])
     # NlogN search of ar1_sorted for each element in ar2
-    ar1_sorted = ar1[index]
     ar1_sorted_index = np.searchsorted(ar1_sorted, ar2)
 
     # undo sort
@@ -218,12 +221,15 @@ def match(ar1, ar2):
     # filter out non-matches
     mask = (ar1[ar1_inds] == ar2)
     ar2_inds = np.where(mask)[0]
-    ar1_inds = ar1_inds[ar2_inds]
+    
+    #fill non-matches with -1 for later usage
+    ar1_inds[np.where(np.logical_not(mask))[0]] = -1
+    #ar1_inds = ar1_inds[ar2_inds]
 
     return ar1_inds, ar2_inds
 
 @njit
-def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): 
+def parentIndicesOfAll_slow(parent_ids, all_gas_ids, all_star_ids): 
     #which parent corresponds to which gas/star particles?
     #for this: save index into gas('0') / star('1') subset array
     target_parent_indices = np.zeros((len(parent_ids),2))
@@ -239,6 +245,23 @@ def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids):
             target_parent_indices[i][1] = 1
     
     return target_parent_indices
+
+def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): 
+    #which parent corresponds to which gas/star particles?
+    #for this: save index into gas('0') / star('1') subset array
+    target_parent_indices = np.zeros((len(parent_ids),2))
+    gas_inds, _ = match(all_gas_ids,parent_ids) #only inds1 relevant
+    star_inds, _ = match(all_star_ids,parent_ids) #only inds1 relevant
+    
+    #gas_inds now contains either the indices of gas parents into the gas subset or -1; same for star_inds
+    target_parent_indices[:,0] = gas_inds
+    target_parent_indices[:,1] = 0
+    target_parent_indices[np.where(gas_inds == -1)[0],1] = 1 #no gas index found => parent is a star
+    target_parent_indices[np.where(gas_inds == -1)[0],0] = star_inds[np.where(star_inds!=-1)[0]]
+    del gas_inds, star_inds
+    return target_parent_indices
+
+
 
 def TraceAllStars(basePath,star_ids, start_snap, target_snap, StarsInSubOffset):    
     all_star_ids = il.snapshot.loadSubset(basePath,start_snap,4,['ParticleIDs'])
@@ -324,7 +347,8 @@ def TraceBackAllInsituStars(basePath,start_snap,target_snap):
     redshift = il.groupcat.loadHeader(basePath,target_snap)['Redshift']
     
     #save results in hdf5 file
-    result = h5py.File('files/tng50-3/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'w')
+    sim = basePath[32:39]
+    result = h5py.File('files/'+sim+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'w')
     dset = result.create_dataset("parent_indices", parent_indices.shape, dtype=float)
     dset[:] = parent_indices
     dset2 = result.create_dataset('tracers_in_parents_offset',tracersInSubOffset.shape, dtype=float)
@@ -338,8 +362,8 @@ def AllTracerProfile(basePath,start_snap,target_snap):
     h_const = header['HubbleParam']
     boxSize = header['BoxSize']
     
-    parent_indices = h5py.File('files/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'r')
-    sub_positions = h5py.File('files/SubhaloPosAtAllSnaps_v2-Copy1_extrapolated.hdf5','r') 
+    parent_indices = h5py.File('files/'+basePath[32:39]+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'r')
+    sub_positions = h5py.File('files/'basePath[32:39]'/SubhaloPosAtAllSnaps_v2-Copy1_extrapolated.hdf5','r') 
     #possibly the position at that snapshot had to be extrapolated
     
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,:,:]
