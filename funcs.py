@@ -110,3 +110,14 @@ def binData_w_bins(val, bins):
             indices = np.where(val > bins[-1])[0]
         num[b] = indices.size      
     return num
+
+
+def is_insitu(basePath, snap):
+    if snap > 9:
+        str_snap = str(snap)
+    else:
+        str_snap = f'0{snap}'
+    check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str_snap + '.hdf5','r')
+    insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
+    check.close()
+    return insitu

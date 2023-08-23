@@ -2,7 +2,6 @@ import numpy as np
 from numba import jit, njit
 import numba as nb
 import illustris_python as il
-import insituFuncs as iF
 import tracerFuncs as tF
 import funcs
 import h5py
@@ -223,7 +222,7 @@ def TraceAllStars(basePath,star_ids, start_snap, target_snap, StarsInSubOffset):
     
     original_order = np.argsort(target_tracer_search_ids)[np.argsort(np.argsort(tracer_search_ids))]
     
-    #sort parents as well as tracers according to sorting of parents
+    #sort parents as well as tracers according to sorting of parents at start snap
     target_tracer_search_ids = target_tracer_search_ids[original_order]
     target_parent_search_ids = target_parent_search_ids[original_order]
     
@@ -241,13 +240,15 @@ def TraceBackAllInsituStars(basePath,start_snap,target_snap):
     star_ids = il.snapshot.loadSubset(basePath,start_snap,'stars',fields=['ParticleIDs'])
 
     #determine all stars from that galaxy that were formed insitu
-    insitu = iF.is_insitu(basePath,np.arange(star_ids.size),start_snap)
+    check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str(start_snap) + '.hdf5','r')
+    insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
+    check.close()
     insitu_star_indices = np.nonzero(insitu)[0]
     
     insituStarsInSubOffset_start_snap = tF.insituStarsInSubOffset(basePath, start_snap)
     
     #run function
-    parent_indices, tracersInSubOffset = TraceAllStars(basePath,star_ids[insitu_star_indices],\
+    parent_indices, tracersInParentsOffset = TraceAllStars(basePath,star_ids[insitu_star_indices],\
                                                        start_snap,target_snap,insituStarsInSubOffset_start_snap)
     
     redshift = il.groupcat.loadHeader(basePath,target_snap)['Redshift']
@@ -257,8 +258,8 @@ def TraceBackAllInsituStars(basePath,start_snap,target_snap):
     result = h5py.File('files/'+sim+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'w')
     dset = result.create_dataset("parent_indices", parent_indices.shape, dtype=float)
     dset[:] = parent_indices
-    dset2 = result.create_dataset('tracers_in_parents_offset',tracersInSubOffset.shape, dtype=float)
-    dset2[:] = tracersInSubOffset
+    dset2 = result.create_dataset('tracers_in_parents_offset',tracersInParentsOffset.shape, dtype=float)
+    dset2[:] = tracersInParentsOffset
     result.close()
     return
 
@@ -295,7 +296,7 @@ def AllTracerProfile(basePath,start_snap,target_snap):
     
         rad_dist = np.ones(gas_pos.shape[0])
         for j in range(gas_pos.shape[0]):
-            rad_dist[j] = iF.dist(subhalo_position,gas_pos[j],boxSize)
+            rad_dist[j] = funcs.dist(subhalo_position,gas_pos[j],boxSize)
         rad_profile = np.concatenate((rad_profile,rad_dist))
         
     print(rad_profile.shape)
