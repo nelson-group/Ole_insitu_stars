@@ -7,9 +7,12 @@ import tracerFuncs as tF
 import funcs
 import sys
 
-target_snap = int(sys.argv[1])
+run = int(sys.argv[1])
+stype = str(sys.argv[2])
+target_snap = int(sys.argv[3])
+
 #define function that saves results from TraceAllStars now for every single snapshot
-def TraceBackAllInsituStars_allSnaps(basePath,start_snap, target_snap):
+def TraceBackAllInsituStars(basePath,start_snap, target_snap):
     #load all star ids from a specific galaxy
     star_ids = il.snapshot.loadSubset(basePath,start_snap,'stars',fields=['ParticleIDs'])
 
@@ -22,23 +25,57 @@ def TraceBackAllInsituStars_allSnaps(basePath,start_snap, target_snap):
     
     sim = basePath[32:39]
     
-    #result = h5py.File('files/' + sim + '/all_parent_indices.hdf5','w')
-    result = h5py.File('/vera/ptmp/gc/olwitt/' + sim + f'/parent_indices_{target_snap}.hdf5','a')    
+    result = h5py.File('/vera/ptmp/gc/olwitt/insitu/' + sim + f'/parent_indices_{target_snap}.hdf5','a') 
     
-    #run function for every snapshot
-    for _ in range(1):
-        parent_indices, numTracersInParents = tF.TraceAllStars(basePath,star_ids[insitu_star_indices],\
-                                                       start_snap,target_snap,insituStarsInSubOffset)  
-        #save results in hdf5 file
+    print('initial loading complete',flush=True)
+    
+    parent_indices, numTracersInParents = tF.TraceAllStars(basePath,star_ids[insitu_star_indices],\
+                                                   start_snap,target_snap,insituStarsInSubOffset)  
+    #save results in hdf5 file
 
-        grp = result.create_group(f'snap_0{target_snap}')
-        dset = grp.create_dataset("parent_indices", parent_indices.shape, dtype=float)
-        dset[:] = parent_indices
-        dset2 = grp.create_dataset('numTracersInParents',numTracersInParents.shape, dtype=float)
-        dset2[:] = numTracersInParents
-        print(target_snap, 'done',end = '; ', flush=True)
+    grp = result.create_group(f'snap_{target_snap}')
+    dset = grp.create_dataset("parent_indices", parent_indices.shape, dtype=float)
+    dset[:] = parent_indices
+    dset2 = grp.create_dataset('numTracersInParents',numTracersInParents.shape, dtype=float)
+    dset2[:] = numTracersInParents
+    print(target_snap, 'done',end = '; ', flush=True)
     result.close()
     return
 
-basePath='/virgotng/universe/IllustrisTNG/TNG50-1/output'
-TraceBackAllInsituStars_allSnaps(basePath, 99, target_snap)
+def TraceBackAllExsituStars(basePath,start_snap, target_snap):
+    #load all star ids from a specific galaxy
+    star_ids = il.snapshot.loadSubset(basePath, start_snap, 'stars', fields = ['ParticleIDs'])
+
+    #determine all stars that were formed ex-situ
+    exsitu = funcs.is_insitu(basePath,start_snap)
+    exsitu = np.asarray(exsitu == 0) #funcs.is_insitu returns array with 1s (in-situ), 0s (ex-situ) and -1s (not part of a subhalo in snap)
+    exsitu_star_indices = np.nonzero(exsitu)[0]
+    
+    exsituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath, start_snap)
+    
+    sim = basePath[32:39]
+    
+    result = h5py.File('/vera/ptmp/gc/olwitt/exsitu/' + sim + f'/parent_indices_{target_snap}.hdf5','a') 
+    
+    print('initial loading complete',flush=True)
+    
+    parent_indices, numTracersInParents = tF.TraceAllStars(basePath,star_ids[exsitu_star_indices],\
+                                                   start_snap,target_snap,exsituStarsInSubOffset)  
+    #save results in hdf5 file
+
+    grp = result.create_group(f'snap_{target_snap}')
+    dset = grp.create_dataset("parent_indices", parent_indices.shape, dtype=float)
+    dset[:] = parent_indices
+    dset2 = grp.create_dataset('numTracersInParents',numTracersInParents.shape, dtype=float)
+    dset2[:] = numTracersInParents
+    print(target_snap, 'done',end = '; ', flush=True)
+    result.close()
+    return
+
+basePath=f'/virgotng/universe/IllustrisTNG/TNG50-{run}/output'
+if stype == 'insitu':
+    TraceBackAllInsituStars(basePath, 99, target_snap)
+elif stype == 'exsitu':
+    TraceBackAllExsituStars(basePath, 99, target_snap)
+else:
+    raise ValueError('Specify valid star type! (insitu or exsitu)')
