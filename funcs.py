@@ -2,16 +2,12 @@ import numba as nb
 import numpy as np
 from numba import jit, njit
 import h5py
-<<<<<<< HEAD
 import os
-=======
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
 from collections import deque
 from bisect import insort, bisect_left
 from itertools import islice
 
-<<<<<<< HEAD
 #@njit
 def log10_mod(arr):
     if not isinstance(arr, np.ndarray):
@@ -47,8 +43,6 @@ def find_file_with_lowest_number(directory):
 
     return min_number
 
-=======
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 #faster than np.isin, bc. np.isin not supported from numba
 @njit(parallel=True)
 def isin(a, b):
@@ -61,8 +55,6 @@ def isin(a, b):
             out[i]=False
     return out
 
-<<<<<<< HEAD
-=======
 @njit
 def where_one(a,b):
     for i in nb.prange(b.shape[0]):
@@ -70,7 +62,6 @@ def where_one(a,b):
             return i
     return -1
 
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 @njit(parallel=True)
 def is_unique(a):
     for i in range(a.size):
@@ -93,17 +84,10 @@ def is_sorted_decreasing(a):
             return False
     return True
 
-<<<<<<< HEAD
 @njit
 def insert(arr,index,value):
     assert index<=arr.size
     out = np.zeros(arr.size+1, dtype = arr.dtype)
-=======
-@njit(parallel=True)
-def insert(arr,index,value):
-    assert index<=arr.size
-    out = np.zeros(arr.size+1)
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     h=0
     for i in nb.prange(out.size):
         if i == index:
@@ -117,11 +101,9 @@ def areEqual(A, B):
     n = len(A)
     if (len(B) != n):
         return False 
-<<<<<<< HEAD
+
     # Create a hash table (dictionary) to count number of instances
-=======
-    # Create a hash table to count number of instances
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
+
     m = {} 
     # For each element of A increase it's instance by 1.
     for i in range(n):
@@ -139,11 +121,7 @@ def areEqual(A, B):
             return False         
     return True
 
-<<<<<<< HEAD
-@jit(nopython = True, parallel = True)
-=======
 @njit
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 def dist(x,y,boxSize):
     diff = x-y
     diff[np.where(diff>boxSize/2)[0]] -= boxSize
@@ -155,17 +133,13 @@ def dist_vector(x,y,boxSize):
     """Determine the distance of every 3-vector-entry in y to x"""
     assert x.shape == (3,), 'x must be of shape (3,)'
     assert y.shape[1] == 3, 'y must be an array of 3-vectors'
-<<<<<<< HEAD
-=======
-    n = y.shape[0]
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
+
     diff = x - y
     diff[np.where(diff > boxSize/2)[0]] -= boxSize
     diff[np.where(diff <= -boxSize/2)[0]] += boxSize
     r = np.linalg.norm(diff, axis = 1)
     return r
 
-<<<<<<< HEAD
 @jit(nopython = True, parallel = True)
 def dist_vector_nb(x,y,boxSize):
     """Determine the distance of every 3-vector-entry in y to x"""
@@ -197,12 +171,6 @@ def binData(val, numBins, mode = 'num', fixed_bins = False, mini = 0, maxi = 0):
             maxVal = maxi
         else:
             raise ValueError("Specify finite minimum and maximum values with min < max !")
-=======
-def binData(val, numBins):
-    
-    minVal = min(val)
-    maxVal = max(val)
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
     binWidth = (maxVal - minVal) / numBins
     
@@ -211,7 +179,6 @@ def binData(val, numBins):
     
     for b in range(numBins):
         indices=np.where(np.logical_and(val >= minVal + b*binWidth, val < minVal + (b+1)*binWidth))[0]
-<<<<<<< HEAD
         if mode == 'num':
             frac[b] = indices.size
         elif mode == 'frac':
@@ -224,25 +191,18 @@ def binData(val, numBins):
             frac[b] = np.nanmedian(val[indices])
         else:
             frac[b] = np.nan
-=======
-        frac[b]=indices.size / val.size
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
+
     return bins,frac
 
 @jit(nopython = True, parallel = True)
 def binData_w_bins(val, bins): 
-<<<<<<< HEAD
     num = np.full(bins.size, np.nan)
     for b in nb.prange(bins.size):
-=======
-    num = np.zeros(bins.size)
-    for b in range(bins.size):
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
         if b < bins.size-1:
             indices = np.where(np.logical_and(val >= bins[b], val < bins[b+1]))[0]
         else:
             indices = np.where(val > bins[-1])[0]
-<<<<<<< HEAD
+            
         if indices.size > 0:
             num[b] = indices.size      
     return num
@@ -280,13 +240,12 @@ def binData_w_bins(val, bins):
             
 #     return xMed, yMed, y16, y84
 
-def binData_num(xVal, yVal, numBins=4):
-=======
-        num[b] = indices.size      
-    return num
+# def binData_num(xVal, yVal, numBins=4):
+# =======
+#         num[b] = indices.size      
+#     return num
 
 def binData_med(xVal, yVal, numBins=4):
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     """
     Compute a running median from a set of (x,y) points.
 
@@ -297,7 +256,6 @@ def binData_med(xVal, yVal, numBins=4):
 
     Output:
     xMed: Array of (median) x values.
-<<<<<<< HEAD
     yNum: Array of y values.
     """    
     minVal = np.min(xVal)
@@ -361,10 +319,9 @@ def binData_med(xVal, yVal, numBins=4, lower = 16, upper = 84):
     yMed: Array of (median) y values.
     ylow: Array of y values (lower th percentile).
     yup: Array of y values (upper th percentile).
-=======
     yMed: Array of (median) y values.
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     """    
+    
     minVal = np.min(xVal)
     maxVal = np.max(xVal)
     
@@ -372,30 +329,18 @@ def binData_med(xVal, yVal, numBins=4, lower = 16, upper = 84):
     
     xMed = np.full(numBins, np.nan)
     yMed = np.full(numBins, np.nan)
-<<<<<<< HEAD
     ylow = np.full(numBins, np.nan)
     yup = np.full(numBins, np.nan)
-=======
-    y16 = np.full(numBins, np.nan)
-    y84 = np.full(numBins, np.nan)
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
     for j in range(numBins):
         relInd = np.where( (xVal >= minVal + j*binWidth) & (xVal < minVal + (j+1)*binWidth) )[0]
         if(relInd.size>0):
             xMed[j] = np.nanmedian(xVal[relInd])
             yMed[j] = np.nanmedian(yVal[relInd])
-<<<<<<< HEAD
             ylow[j] = np.nanpercentile(yVal[relInd],lower)
             yup[j] = np.nanpercentile(yVal[relInd],upper)
             
     return xMed, yMed, ylow, yup
-=======
-            y16[j] = np.nanpercentile(yVal[relInd],16)
-            y84[j] = np.nanpercentile(yVal[relInd],84)
-            
-    return xMed, yMed, y16, y84
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
 def is_insitu(basePath, snap):
     if snap > 9:
@@ -474,7 +419,6 @@ def data_intersect_value(y,value):
         return np.where(np.min(np.abs(y_dist)) == np.abs(y_dist))[0], False
     #else choose values, where following values are on opposite side of the 'line'
     ind = np.where(y_dist[1:] * y_dist[:-1] < 0)[0]
-<<<<<<< HEAD
     return ind, True
 
 @jit(nopython = True, parallel = True)
@@ -493,6 +437,3 @@ def hmr(res, cumsum_profiles, dist_bins):
                 else:
                     res[i,j] = np.nanmean(np.array([dist_bins[ind], dist_bins[ind+1]]))
     return res
-=======
-    return ind, True
->>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
