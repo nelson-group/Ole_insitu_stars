@@ -5,7 +5,11 @@ import illustris_python as il
 import tracerFuncs as tF
 import funcs
 import h5py
+<<<<<<< HEAD
 import time
+=======
+
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
 @njit
 def findTracerIDs(star_ids, tracer_ids, parent_ids): 
@@ -17,6 +21,7 @@ def findTracerIDs(star_ids, tracer_ids, parent_ids):
 
 @njit
 def getIndices(search_ids,ids):
+<<<<<<< HEAD
     """Returns the indices into ids of all elements of search_ids that are also elements of ids."""
     indices = np.nonzero(funcs.isin(ids,search_ids))[0]
     return indices
@@ -70,6 +75,59 @@ def getIndices(search_ids,ids):
 
 
 @jit(nopython = True)
+=======
+    indices = np.nonzero(funcs.isin(ids,search_ids))[0]
+    return indices
+
+@njit
+def sortIDs(parentIDs, tracer_indices):
+    #we want to sort all tracers belonging to the same parent particle after each other
+    #also sort parent ids: tracer_indices=[(tracers of parent 1),(tracers of parent 2),...]
+    #obtain indices that would sort parentIDs
+    parent_sorted_indices = np.argsort(parentIDs)
+    
+    #reshuffle tracer_indices using obtained order from parentIDs
+    tracer_sorted_indices = np.ravel(tracer_indices)[parent_sorted_indices]
+    
+    #return sorted parentIDs as well as reshuffled tracer indices
+    return parentIDs[parent_sorted_indices], tracer_sorted_indices
+
+
+@jit(forceobj=True)
+def tracersOfSubhalo(basePath,star_ids, start_snap, target_snap):    
+    #load tracers at z=0
+    tracers = il.snapshot.loadSubset(basePath,start_snap,3)
+    tracer_ids = tracers['TracerID'].copy()
+    parent_ids = tracers['ParentID'].copy()
+    #print('# tracers in total: ',tracer_ids.size)
+    
+    #load tracers at target snapshot
+    target_tracers = il.snapshot.loadSubset(basePath,target_snap,3)
+    parent_target_ids = target_tracers['ParentID']
+    tracer_target_ids = target_tracers['TracerID']
+    
+    #find IDs of Tracers belonging to relevant stars
+    tracer_search_ids, tracer_indices = findTracerIDs(star_ids,tracer_ids,parent_ids)
+    
+    #load all relevant parent particles
+    all_gas_ids = il.snapshot.loadSubset(basePath,target_snap,0,['ParticleIDs'])
+    all_star_ids = il.snapshot.loadSubset(basePath,target_snap,4,['ParticleIDs'])
+    
+    #get indices of relevant tracers in array of tracers in target snapshot
+    tracer_target_indices = getIndices(tracer_search_ids,tracer_target_ids)
+    
+    #sort parents as well as tracers according to sorting of parents
+    parent_target_ids, tracer_target_indices = sortIDs(parent_target_ids[tracer_target_indices],tracer_target_indices)
+    
+    #identify parent types
+    gas_indices = getIndices(parent_target_ids,all_gas_ids)
+    star_indices = getIndices(parent_target_ids,all_star_ids)
+    
+    return all_gas_ids[gas_indices], all_star_ids[star_indices]
+
+
+@njit
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 def tracersInSubhalo(StarsInSubOffset, TracersInStarOffset):
     n = StarsInSubOffset.shape[0]
     TracersInSubOffset = np.zeros(n)
@@ -78,15 +136,25 @@ def tracersInSubhalo(StarsInSubOffset, TracersInStarOffset):
     TracersInSubOffset = np.cumsum(TracersInSubOffset)
     return TracersInSubOffset
 
+<<<<<<< HEAD
 #@jit(nopython = True, parallel = True)
 def createSortedArrays(star_ids, parent_ids, tracer_ids, StarOffsetsInSubs):
+=======
+def createSortedArrays(star_ids,parent_ids,tracer_ids,StarOffsetsInSubs):
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     #first determine how many tracers there are for every star
     parent_ids_copy = np.copy(parent_ids)
     parent_ids_copy = np.sort(parent_ids_copy)
     
+<<<<<<< HEAD
     num_TracersPerParent = funcs.searchsorted_nb_right(parent_ids_copy,star_ids) - funcs.searchsorted_nb_left(parent_ids_copy,star_ids)
     parent_ids_offsets = np.cumsum(num_TracersPerParent)
     parent_ids_offsets = np.insert(parent_ids_offsets,0,0)
+=======
+    num_TracersPerParent = np.searchsorted(parent_ids_copy,star_ids,'right') - np.searchsorted(parent_ids_copy,star_ids,'left')
+    parent_ids_offsets = np.cumsum(num_TracersPerParent)
+    parent_ids_offsets = np.insert(parent_ids_offsets, 0, 0)
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
 #     subIndexTemp = np.zeros(star_ids.size)
 #     num_TracersPerSub = np.zeros(StarOffsetsInSubs.size-1)
@@ -107,14 +175,22 @@ def createSortedArrays(star_ids, parent_ids, tracer_ids, StarOffsetsInSubs):
         
     #find the order that would arange parent_ids in the same way search_parents would is aranged
     order = np.argsort(parent_ids)[np.argsort(np.argsort(search_parents))]
+<<<<<<< HEAD
 #    assert( np.array_equal(parent_ids[order], search_parents) )
+=======
+    assert( np.array_equal(parent_ids[order], search_parents) )
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
 #    del subIndexTemp
     del parent_ids_copy
     
     return tracer_ids[order], parent_ids[order], num_TracersPerParent
 
+<<<<<<< HEAD
 # @jit(nopython = True, parallel = True)
+=======
+
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 def match(ar1, ar2, is_sorted = False):
     """ Returns index arrays i1,i2 of the matching elements between ar1 and ar2. While the elements of ar1 
         must be unique, the elements of ar2 need not be. For every matched element of ar2, the return i1 
@@ -125,9 +201,12 @@ def match(ar1, ar2, is_sorted = False):
         bisection search for each element of ar2, therefore O(N_ar1*log(N_ar1) + N_ar2*log(N_ar1)) ~= 
         O(N_ar1*log(N_ar1)) complexity so long as N_ar2 << N_ar1. """
     
+<<<<<<< HEAD
     if type(ar1) == dict:        
         return -1, np.array([])
     
+=======
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     if not is_sorted:
         # need a sorted copy of ar1 to run bisection against
         index = np.argsort(ar1)
@@ -140,13 +219,20 @@ def match(ar1, ar2, is_sorted = False):
     
     # undo sort
     ar1_inds = np.take(index, ar1_sorted_index, mode="clip")
+<<<<<<< HEAD
 #     ar1_inds = funcs.take_nb_clip(index, ar1_sorted_index)
+=======
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
     # filter out non-matches
     mask = (ar1[ar1_inds] == ar2)
     ar2_inds = np.where(mask)[0]
     
+<<<<<<< HEAD
     #out = 'last true' if mask[-1] else 'last false'
+=======
+    out = 'last true' if mask[-1] else 'last false'
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     #print(out)
     
     #fill non-matches with -1 for later usage
@@ -155,6 +241,7 @@ def match(ar1, ar2, is_sorted = False):
     #ar1_inds = ar1_inds[ar2_inds]
     return ar1_inds, ar2_inds
 
+<<<<<<< HEAD
 # @jit(nopython = True, parallel = True)
 def match_general(ar1, ar2, is_sorted = False):
     """ Returns index arrays i1,i2 of the matching elements between ar1 and ar2. While the elements of ar1 
@@ -194,10 +281,31 @@ def match_general(ar1, ar2, is_sorted = False):
     return ar1_inds, ar2_inds
 
 # @jit(nopython = True, parallel = True)
+=======
+@njit
+def parentIndicesOfAll_slow(parent_ids, all_gas_ids, all_star_ids): #N*N
+    #which parent corresponds to which gas/star particles?
+    #for this: save index into gas('0') / star('1') subset array
+    target_parent_indices = np.zeros((len(parent_ids),2))
+    
+    for i in nb.prange(len(parent_ids)):
+        ind = tF.where_one(parent_ids[i],all_gas_ids)
+        if(ind!=-1):
+            target_parent_indices[i][0] = int(ind)
+            target_parent_indices[i][1] = 0
+        else:
+            ind2 = tF.where_one(parent_ids[i],all_star_ids)
+            target_parent_indices[i][0] = int(ind2)
+            target_parent_indices[i][1] = 1
+    
+    return target_parent_indices
+
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): #NlogN
     #which parent corresponds to which gas/star particles?
     #for this: save index into gas('0') / star('1') subset array
     target_parent_indices = np.zeros((len(parent_ids),2))
+<<<<<<< HEAD
     gas_inds, _ = tF.match(all_gas_ids, parent_ids) #only inds1 relevant
     print('gas indices done')
     
@@ -210,10 +318,15 @@ def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): #NlogN
     #print(np.where(gas_inds == -1)[0].shape[0])
     #print(np.where(star_inds != -1)[0].shape[0])
     #assert(np.where(gas_inds == -1)[0].shape[0] == np.where(star_inds != -1)[0].shape[0])
+=======
+    gas_inds, _ = match(all_gas_ids, parent_ids) #only inds1 relevant
+    star_inds, _ = match(all_star_ids, parent_ids) #only inds1 relevant
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
     #gas_inds now contains either the indices of gas parents into the gas subset or -1; same for star_inds
     target_parent_indices[:,0] = gas_inds
     target_parent_indices[:,1] = 0
+<<<<<<< HEAD
     mask = np.where(gas_inds == -1)[0]
     target_parent_indices[mask,1] = 1 #no gas index found => parent is a star
     if type(star_inds) == np.ndarray:
@@ -222,6 +335,11 @@ def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): #NlogN
         target_parent_indices[mask,0] = star_inds
     del gas_inds, star_inds
     print('filling done')
+=======
+    target_parent_indices[np.where(gas_inds == -1)[0],1] = 1 #no gas index found => parent is a star
+    target_parent_indices[np.where(gas_inds == -1)[0],0] = star_inds[np.where(star_inds != -1)[0]]
+    del gas_inds, star_inds
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     return target_parent_indices
 
 
@@ -229,6 +347,7 @@ def parentIndicesOfAll(parent_ids, all_gas_ids, all_star_ids): #NlogN
 def TraceAllStars(basePath,star_ids, start_snap, target_snap, StarsInSubOffset):    
     #all_star_ids = il.snapshot.loadSubset(basePath,start_snap,4,['ParticleIDs'])
     #load tracers at z=0
+<<<<<<< HEAD
     start = time.time()
     tracer_ids = il.snapshot.loadSubset(basePath,start_snap,3, fields = ['TracerID'])
     parent_ids = il.snapshot.loadSubset(basePath,start_snap,3, fields = ['ParentID'])
@@ -250,24 +369,52 @@ def TraceAllStars(basePath,star_ids, start_snap, target_snap, StarsInSubOffset):
     create_arrays = time.time()
     print('time for creating sorted arrays: ',create_arrays-find_tracers, flush = True)
     del parent_ids, tracer_ids, StarsInSubOffset, star_ids
+=======
+    tracers = il.snapshot.loadSubset(basePath,start_snap,3)
+    tracer_ids = tracers['TracerID'].copy()
+    parent_ids = tracers['ParentID'].copy()
+    
+    #load tracers at target snapshot
+    target_tracers = il.snapshot.loadSubset(basePath,target_snap,3)
+    parent_target_ids = target_tracers['ParentID']
+    tracer_target_ids = target_tracers['TracerID']
+    
+    #load all relevant parent particles at target snapshot
+    all_target_gas_ids = il.snapshot.loadSubset(basePath,target_snap,0,['ParticleIDs'])
+    all_target_star_ids = il.snapshot.loadSubset(basePath,target_snap,4,['ParticleIDs'])
+    
+#---------------------------------------------------    
+    
+    #find IDs of Tracers belonging to relevant stars
+    tracer_search_ids, tracer_indices = tF.findTracerIDs(star_ids,tracer_ids,parent_ids)
+    
+    #rearange all parent and tracer ids
+    tracer_search_ids, parent_search_ids, numTracersInParents =\
+    createSortedArrays(star_ids, parent_ids[tracer_indices], tracer_ids[tracer_indices], StarsInSubOffset)
+    
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     #the number of tracers per subhalo can becomputed from knowing the number of tracers in every star (numTracersInParent)
     #and the number of stars in every subhalo (StarInSubOffset)
     
     #assert(areEqual(parent_search_ids,parent_ids[tracer_indices]))
     #assert(areEqual(tracer_search_ids,tracer_ids[tracer_indices]))
     
+<<<<<<< HEAD
     #load tracers at target snapshot
     tracer_target_ids = il.snapshot.loadSubset(basePath,target_snap,3, fields = ['TracerID'])
     parent_target_ids = il.snapshot.loadSubset(basePath,target_snap,3, fields = ['ParentID'])
     
     after_load2 = time.time()
     
+=======
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     #get indices of relevant tracers in array of tracers in target snapshot
     tracer_target_indices = tF.getIndices(tracer_search_ids,tracer_target_ids)
     
     target_tracer_search_ids = tracer_target_ids[tracer_target_indices].copy()
     target_parent_search_ids = parent_target_ids[tracer_target_indices].copy()
     
+<<<<<<< HEAD
     del tracer_target_ids, parent_target_ids
     
     original_order = np.argsort(target_tracer_search_ids)[np.argsort(np.argsort(tracer_search_ids))]
@@ -293,10 +440,20 @@ def TraceAllStars(basePath,star_ids, start_snap, target_snap, StarsInSubOffset):
         all_target_star_ids = np.array([])
     
     after_load3 = time.time()
+=======
+    original_order = np.argsort(target_tracer_search_ids)[np.argsort(np.argsort(tracer_search_ids))]
+    
+    #sort parents as well as tracers according to sorting of parents at start snap
+    target_tracer_search_ids = target_tracer_search_ids[original_order]
+    target_parent_search_ids = target_parent_search_ids[original_order]
+    
+    assert(np.array_equal(target_tracer_search_ids,tracer_search_ids))
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
     
     target_parent_indices = parentIndicesOfAll(parent_ids = target_parent_search_ids, all_gas_ids = all_target_gas_ids,\
                                                all_star_ids = all_target_star_ids)
     
+<<<<<<< HEAD
     end = time.time()
     print('time for finding indices into subset arrays: ',end-after_load3, flush = True)
     print('total time: ',end-start, flush = True)
@@ -334,6 +491,82 @@ def TraceBackAllInsituStars_allSnaps(basePath,start_snap):
     result.close()
     return
 
+=======
+    
+    return target_parent_indices, numTracersInParents
+
+#define function that saves results from TraceAllStars
+def TraceBackAllInsituStars(basePath,start_snap,target_snap):
+    #load all star ids from a specific galaxy
+    star_ids = il.snapshot.loadSubset(basePath,start_snap,'stars',fields=['ParticleIDs'])
+
+    #determine all stars from that galaxy that were formed insitu
+    check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str(start_snap) + '.hdf5','r')
+    insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
+    check.close()
+    insitu_star_indices = np.nonzero(insitu)[0]
+    
+    insituStarsInSubOffset_start_snap = tF.insituStarsInSubOffset(basePath, start_snap)
+    
+    #run function
+    parent_indices, tracersInParentsOffset = TraceAllStars(basePath,star_ids[insitu_star_indices],\
+                                                       start_snap,target_snap,insituStarsInSubOffset_start_snap)
+    
+    redshift = il.groupcat.loadHeader(basePath,target_snap)['Redshift']
+    
+    #save results in hdf5 file
+    sim = basePath[32:39]
+    result = h5py.File('files/'+sim+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'w')
+    dset = result.create_dataset("parent_indices", parent_indices.shape, dtype=float)
+    dset[:] = parent_indices
+    dset2 = result.create_dataset('tracers_in_parents_offset',tracersInParentsOffset.shape, dtype=float)
+    dset2[:] = tracersInParentsOffset
+    result.close()
+    return
+
+def AllTracerProfile(basePath,start_snap,target_snap):
+    header = il.groupcat.loadHeader(basePath,target_snap)
+    redshift = header['Redshift']
+    h_const = header['HubbleParam']
+    boxSize = header['BoxSize']
+    
+    parent_indices = h5py.File('files/'+basePath[32:39]+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'r')
+    sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPosAtAllSnaps_v2-Copy1_extrapolated.hdf5','r') 
+    #possibly the position at that snapshot had to be extrapolated
+    
+    sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,:,:]
+    num_subs = sub_pos_at_target_snap.shape[0]
+
+    parent_indices_data = parent_indices['parent_indices'][:,:]
+    tracers_in_parent_offset = parent_indices['tracers_in_parents_offset'][:]
+    
+    all_gas_pos = il.snapshot.loadSubset(basePath,target_snap,'gas',fields=['Coordinates'])
+
+    insituStarsInSubOffset_start_snap = tF.insituStarsInSubOffset(basePath, start_snap)
+    
+    #there might be more tracers -> parents in one galaxy at higher redshifts than insitu stars at redshift 0
+    final_offsets = tF.tracersInSubhalo(insituStarsInSubOffset_start_snap, tracers_in_parent_offset)
+    
+    rad_profile = np.zeros(1)
+    for i in range(1,num_subs):
+        parent_indices_of_sub = parent_indices_data[int(final_offsets[i-1]):int(final_offsets[i]),:]
+        gas_parent_indices = parent_indices_of_sub[np.where(parent_indices_of_sub[:,1]==0)[0],0]
+        gas_pos = all_gas_pos[gas_parent_indices.astype('int')]
+    
+        subhalo_position = sub_pos_at_target_snap[i-1,start_snap-target_snap,:]
+    
+        rad_dist = np.ones(gas_pos.shape[0])
+        for j in range(gas_pos.shape[0]):
+            rad_dist[j] = funcs.dist(subhalo_position,gas_pos[j],boxSize)
+        rad_profile = np.concatenate((rad_profile,rad_dist))
+        
+    print(rad_profile.shape)
+    bins, num = iF.binData(rad_profile[np.where(rad_profile<boxSize)[0]],100)
+
+    parent_indices.close()
+    sub_positions.close()
+    return bins, num
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
 def insituStarsInSubOffset(basePath, snap):
     """compute for an array of insitu stars, how many of them are in each subhalo
@@ -348,6 +581,7 @@ def insituStarsInSubOffset(basePath, snap):
     numStarsInSubs = il.groupcat.loadSubhalos(basePath, snap, fields = ['SubhaloLenType'])[:,4]
     
     check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str_snap + '.hdf5','r')
+<<<<<<< HEAD
     insitu = check['InSitu'][:] #1 if star is formed insitu, 0 if it was formed ex-situ and -1 otherwise (fuzz)
     insitu = np.asarray(insitu == 1)
     check.close()
@@ -383,12 +617,20 @@ def exsituStarsInSubOffset(basePath, snap):
 def compute_offsets(starsInSubOffset, numStarsInSubs, insitu):
     insituStarsInSubOffset = np.zeros(starsInSubOffset.shape[0], dtype = np.int32)
     for i in nb.prange(1,starsInSubOffset.shape[0]):
+=======
+    insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
+    check.close()
+    
+    insituStarsInSubOffset = np.zeros(starsInSubOffset.shape[0])
+    for i in range(1,starsInSubOffset.shape[0]):
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
         star_indices = np.arange(starsInSubOffset[i-1],starsInSubOffset[i-1] +\
                                  numStarsInSubs[i-1])
         insitu_indices = insitu[star_indices]
         insituStarsInSubOffset[i] = len(np.nonzero(insitu_indices)[0])
     
     insituStarsInSubOffset = np.cumsum(insituStarsInSubOffset)
+<<<<<<< HEAD
     return insituStarsInSubOffset
 
 
@@ -567,3 +809,6 @@ def traceBack_DM(basePath, start_snap, target_snap):
     done = time.time()
     print('time to run: ', done - start)
     return #target_DM_inds, inside_offsets
+=======
+    return insituStarsInSubOffset
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54

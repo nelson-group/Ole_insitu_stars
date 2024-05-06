@@ -9,8 +9,11 @@ import locatingFuncs as lF
 import funcs
 from os.path import isfile
 import sys
+<<<<<<< HEAD
 sys.path.append('/vera/u/olwitt/illustris_python/illustris_python')
 from loadMPBs import loadMPBs
+=======
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
 
 
 def group_masses_for_sub_ids(groupMasses, subMasses, groupFirstSub, subIDs):
@@ -31,6 +34,7 @@ def give_z_array(basePath):
     z = np.zeros(100)
     for i in range(99,-1,-1):
         z[99-i] = il.groupcat.loadHeader(basePath,i)['Redshift']
+<<<<<<< HEAD
     return z
 
 #useless function, just use loadTree with the quantity!!
@@ -153,3 +157,6 @@ def galaxy_ages(basePath, snap, onlyCentrals = False, onlyInsitu = False):
     end = time.time()
     print('done in ', end - start)
     return galaxy_form_z
+=======
+    return z
+>>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
