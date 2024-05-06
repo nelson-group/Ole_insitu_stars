@@ -145,6 +145,69 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
         
     return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form
 
+@jit(nopython = True, parallel = True)
+def distances_dm(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets, all_dm_pos,\
+                      sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize, target_snap):
+    """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed. Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
+    
+    sub_medians = np.full((sub_ids.shape[0],3),np.nan)
+    sub_medians_r_vir = np.full((sub_ids.shape[0],3),np.nan)
+    
+    inside_2shmr = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
+    inside_r_vir = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
+        
+    for i in nb.prange(sub_ids.shape[0]):
+        
+        #skip unsuitable subhalos 
+        if subhaloFlag[i] == 0:
+            continue
+            
+        sub_id = sub_ids[i]
+        indices_of_sub = np.arange(final_offsets[sub_id],final_offsets[sub_id+1])
+        location_of_sub_at_cut = location_at_cut[indices_of_sub]
+        isInMP_of_sub_at_cut = isInMP_at_cut[indices_of_sub]
+        
+        dm_indices_of_sub = parent_indices_data[indices_of_sub]
+
+        particle_pos = all_dm_pos[dm_indices_of_sub,:]
+        
+        subhalo_position = sub_pos_at_target_snap[sub_id,:] #prior: sub_id instead of index!!!
+
+        rad_dist = funcs.dist_vector_nb(subhalo_position,particle_pos,boxSize)
+        
+        #radius crossings:
+        
+        in_gal = np.where(rad_dist < 2 * shmr[i])[0]
+        inside_2shmr[indices_of_sub[in_gal]] = 1
+        in_halo = np.where(rad_dist < r_vir[i])[0]
+        inside_r_vir[indices_of_sub[in_halo]] = 1
+        
+        #Lagrangian region computations:
+        
+        igm_mask = np.where(location_of_sub_at_cut == -1)[0]
+        satellite_mask = np.where((location_of_sub_at_cut != -1) & (np.logical_not(isInMP_of_sub_at_cut)))[0]
+                
+        if rad_dist.size > 0:
+            sub_medians[i,0] = np.median(rad_dist) / shmr[i]
+            
+        if igm_mask.size > 0:
+            sub_medians[i,1] = np.median(rad_dist[igm_mask]) / shmr[i]
+
+        if satellite_mask.size > 0:
+            sub_medians[i,2] = np.median(rad_dist[satellite_mask]) / shmr[i]
+            
+        if rad_dist.size > 0:
+            sub_medians_r_vir[i,0] = np.median(rad_dist) / r_vir[i]
+            
+        if igm_mask.size > 0:
+            sub_medians_r_vir[i,1] = np.median(rad_dist[igm_mask]) / r_vir[i]
+
+        if satellite_mask.size > 0:
+            sub_medians_r_vir[i,2] = np.median(rad_dist[satellite_mask]) / r_vir[i]
+            
+        
+    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir
+
 def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     start_loading = time.time()
     header = il.groupcat.loadHeader(basePath,target_snap)
@@ -192,9 +255,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     trees = loadMPBs(basePath, start_snap, ids = tree_ids, fields = ['SubfindID'])
     
     #load data from files ---------------------------------------------------------------------------------
-    file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{target_snap}.hdf5'
-    f = h5py.File(file,'r')
-    
     sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5','r') 
     is_extrapolated = sub_positions['is_extrapolated'][:]
     
@@ -202,10 +262,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,99-target_snap,:]
     sub_positions.close()
     
-    parent_indices = f[f'snap_{target_snap}/parent_indices'][:,:]
-    parent_indices_data = parent_indices[:,:].astype(int)
-    num_tracers = parent_indices.shape[0]
-    
+    #identical for in-situ/ex-situ/dm
     loc_file = h5py.File(f'/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/subhalo_index_table.hdf5','r')
     location = loc_file[f'snap_{cut_snap}/location'][:]
     
@@ -215,24 +272,50 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     del location_type
     loc_file.close()
     
+    if stype.lower() in ['insitu', 'exsitu']:
+        file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{target_snap}.hdf5'
+        f = h5py.File(file,'r')
+
+        parent_indices = f[f'snap_{target_snap}/parent_indices'][:,:]
+        parent_indices_data = parent_indices[:,:].astype(int)
+        num_tracers = parent_indices.shape[0]
+    
     #offsets -----------------------------------------------------------------------------------------------
-    if f.__contains__(f'snap_{target_snap}/numTracersInParents'):
-        numTracersInParents = f[f'snap_{target_snap}/numTracersInParents'][:]
-    else:
-        numTracersInParents = f[f'snap_{target_snap}/tracers_in_parents_offset'][:]
-    f.close()
+        #here, it's okay that the offsets at the target snapshot are used as they are identical at every snapshot
+        if f.__contains__(f'snap_{target_snap}/numTracersInParents'):
+            numTracersInParents = f[f'snap_{target_snap}/numTracersInParents'][:]
+        else:
+            numTracersInParents = f[f'snap_{target_snap}/tracers_in_parents_offset'][:]
+        f.close()
         
-    if stype == 'insitu':
-        insituStarsInSubOffset = tF.insituStarsInSubOffset(basePath,start_snap)
-    elif stype == 'exsitu':
-        insituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath,start_snap)
+        if stype == 'insitu':
+            insituStarsInSubOffset = tF.insituStarsInSubOffset(basePath,start_snap)
+        else:
+            insituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath,start_snap)
+            
+        final_offsets = tF.tracersInSubhalo(insituStarsInSubOffset,numTracersInParents).astype(int)
+        final_offsets = np.insert(final_offsets,0,0)
+        
+        del insituStarsInSubOffset, numTracersInParents
+        
+    elif stype.lower() in ['dm', 'darkmatter', 'dark_matter', 'dark matter']:
+        stype = 'dm'
+        
+        file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/dm_indices_{target_snap}.hdf5'
+        f = h5py.File(file,'r')
+
+        parent_indices = f[f'dm_indices'][:]
+        parent_indices_data = parent_indices.astype(int)
+        num_tracers = parent_indices.shape[0]
+        
+        final_offsets = f['dmInSubOffset'][:]
+        f.close()
+        
     else:
-        raise Exception('Invalid star type!')
-    final_offsets = tF.tracersInSubhalo(insituStarsInSubOffset,numTracersInParents).astype(int)
-    final_offsets = np.insert(final_offsets,0,0)
+        raise Exception('Invalid star/particle type!')
     # ^ offsets for the parent index table, that's why at snapshot 99
     
-    del insituStarsInSubOffset, numTracersInParents
+    
     
     #which galaxies? ----------------------------------------------------------------------------------------
     not_extrapolated = np.nonzero(np.logical_not(is_extrapolated))[0]
@@ -320,27 +403,39 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     
     #get star formation snapshot for all tracers
     
-    f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
-    star_formation_snaps = f['star_formation_snapshot'][:]
-    f.close()
+    if stype in ['insitu', 'exsitu']:
+        f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
+        star_formation_snaps = f['star_formation_snapshot'][:]
+        f.close()
     
-    #load particle positions only right before computation begins
-    all_gas_pos = il.snapshot.loadSubset(basePath,target_snap, 'gas', fields = ['Coordinates'])
-    all_star_pos = il.snapshot.loadSubset(basePath,target_snap, 'stars', fields = ['Coordinates'])
+        #load particle positions only right before computation begins
+        all_gas_pos = il.snapshot.loadSubset(basePath,target_snap, 'gas', fields = ['Coordinates'])
+        all_star_pos = il.snapshot.loadSubset(basePath,target_snap, 'stars', fields = ['Coordinates'])
     
     #check memory usage
 #     print(psutil.virtual_memory().percent,' % of RAM used')
     
-    if isinstance(all_star_pos, dict):
-        all_star_pos = np.zeros((1,3))
-    
-    start = time.time()
-    print('time for loading and shit: ',start-start_loading)
-    
-    
-    sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, star_formation_dist =\
-    distances(parent_indices_data, location, isInMP, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag,\
+        if isinstance(all_star_pos, dict):
+            all_star_pos = np.zeros((1,3))
+            
+        start = time.time()
+        print('time for loading and shit: ',start-start_loading)
+            
+        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, star_formation_dist =\
+        distances(parent_indices_data, location, isInMP, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag,\
               sub_ids, shmr, r_vir, boxSize, star_formation_snaps, target_snap)
+        
+    else:
+        all_dm_pos = il.snapshot.loadSubset(basePath, target_snap, 'dm', fields = ['Coordinates'])
+        
+        start = time.time()
+        print('time for loading and shit: ',start-start_loading)
+        
+        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo =\
+        distances_dm(parent_indices_data, location, isInMP, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag,\
+              sub_ids, shmr, r_vir, boxSize, target_snap)
+        
+        star_formation_dist = np.array([-1])
     
     
     end = time.time()
