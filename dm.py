@@ -66,7 +66,7 @@ def traceBack_DM(basePath, start_snap, target_snap):
     trace_back_indices = np.nonzero(which_particles)[0]
     
     if trace_back_indices.shape[0] == 0:
-        raise ValueError('No particles to trace back!')
+        raise Exception('No particles to trace back!')
         
     del DM_coords, sub_pos, shmr, which_particles
     
@@ -850,6 +850,110 @@ def dm_halo_core_formation_time(basePath, start_snap):
     f.create_dataset('formation_times', data = form_z)
     f.create_dataset('subhaloFlag', data = subhaloFlag)
     f.create_dataset('central_subhaloFlag', data = central_subhaloFlag)
+    f.close()
+    
+    return
+
+#new function to use the output from lagrangian_region_times.py
+def dm_halo_core_formation_time_lagr_reg(basePath, start_snap):
+    
+    start = time.time()
+    h = il.groupcat.loadHeader(basePath, start_snap)
+    num_subs = h['Nsubgroups_Total']
+    print(num_subs)
+    z = iF.give_z_array(basePath)
+    run = basePath[38]
+    
+    shmr_thresh = 2
+    r_vir_thresh = 1
+    
+    core_form_snap = np.full(num_subs, -1, dtype = np.byte) #result array
+    form_snap = np.full(num_subs, -1, dtype = np.byte)
+    subhaloFlag = np.zeros(num_subs, dtype = np.ubyte)
+    core_subhaloFlag = np.zeros(num_subs, dtype = np.ubyte)
+    last_central_snap = np.full(num_subs, -1, dtype = np.ubyte)
+    
+    min_snap = 0
+    snaps = np.arange(99,min_snap - 1,-1)
+    
+    #determine, at which snapshot each subhalo is no longer a central
+    for target_snap in snaps:
+    
+        file = f'/vera/ptmp/gc/olwitt/dm/TNG50-{run}/lagrangian_regions/lagrangian_regions_cut21_{target_snap}.hdf5'
+        f = h5py.File(file,'r')
+        tmp_subhaloFlag = f['subhaloFlag'][:]
+#         print(tmp_subhaloFlag.shape)
+        f.close()
+        
+        #only consider subhalos as centrals at a certain snapshot, if they were a central in the previously considered snapshot
+        if target_snap == start_snap:
+            last_central_snap[np.where(tmp_subhaloFlag == 1)] = target_snap
+        else:
+            last_central_snap[np.where(np.logical_and(tmp_subhaloFlag == 1, old_tmp_subhaloFlag == 1))] = target_snap
+        
+        old_tmp_subhaloFlag = tmp_subhaloFlag.copy()
+    
+    
+    for i, target_snap in enumerate(snaps):
+    
+        start_loop = time.time()
+        file = f'/vera/ptmp/gc/olwitt/dm/TNG50-{run}/lagrangian_regions/lagrangian_regions_cut21_{target_snap}.hdf5'
+        f = h5py.File(file,'r')
+        
+        #subhalo medians are NaN if not computed (bc not a central or something)
+#         print(f['lagrangian_regions_shmr'].shape)
+        if len(f['lagrangian_regions_shmr'].shape) == 2:
+            sub_med_dist_shmr = f['lagrangian_regions_shmr'][:,0]
+            sub_med_dist_r_vir = f['lagrangian_regions_r_vir'][:,0]
+            f.close()
+            print(i)
+        else:
+            f.close()
+            continue
+        
+    
+        if i > 0:
+            # there might be the possibility, that such a change in the fraction of dark matter particles within 2SHMR occurs more than once
+            # for a single galaxy. In this case, the algorithm captures the earliest time (lowest snapshot) at which this happens. This is
+            # also what we want, as we're looking for the first time, when this threshold is reached. This point in time marks the 
+            # formation snapshot of the subhalo.
+            #problem: not calculated: NaN. But: NaN <,==,> smth is always False
+            with np.errstate(invalid='ignore'):
+                core_formation_indices = np.where(np.logical_and(old_sub_med_dist_shmr <= shmr_thresh, sub_med_dist_shmr >= shmr_thresh))[0]
+                formation_indices = np.where(np.logical_and(old_sub_med_dist_r_vir <= r_vir_thresh, sub_med_dist_r_vir >= r_vir_thresh))[0]
+            
+#             print(formation_indices.shape, core_formation_indices.shape)
+            
+            core_form_snap[core_formation_indices] = target_snap + 1
+            form_snap[formation_indices] = target_snap + 1
+            
+            # only mark those subhalos as suitable for analysis that were a central before they formed there dm core
+            #possible that this has to be repeated for formation_indices
+            core_subhaloFlag[np.where(np.logical_and(last_central_snap[core_formation_indices] <= target_snap + 1,\
+                                               last_central_snap[core_formation_indices] != -1))] = 1
+            subhaloFlag[np.where(np.logical_and(last_central_snap[formation_indices] <= target_snap + 1,\
+                                               last_central_snap[formation_indices] != -1))] = 1
+        
+        old_sub_med_dist_shmr = sub_med_dist_shmr.copy() #old means in the previous loop, i.e. at a higher snapshot
+        old_sub_med_dist_r_vir = sub_med_dist_r_vir.copy()
+        
+        
+    core_form_z = np.full(num_subs, -1, dtype = np.float)
+    mask = np.where(core_form_snap != -1)
+    core_form_z[mask] = z[99 - core_form_snap[mask]]
+    form_z = np.full(num_subs, -1, dtype = np.float)
+    mask = np.where(form_snap != -1)
+    form_z[np.where(form_snap[mask] != -1)] = z[99 - form_snap[mask]]
+    
+    end = time.time()
+    print('total time: ', end - start)
+    
+    file = '/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + f'/dm_halo_core_formation_times.hdf5'
+    f = h5py.File(file,'w')
+    f.create_dataset('core_formation_times', data = core_form_z)
+    f.create_dataset('formation_times', data = form_z)
+    f.create_dataset('core_subhaloFlag', data = core_subhaloFlag)
+    f.create_dataset('subhaloFlag', data = subhaloFlag)
     f.close()
     
     return

@@ -13,28 +13,6 @@ import psutil
 sys.path.append('/vera/u/olwitt/illustris_python/illustris_python')
 from loadMPBs import loadMPBs
 
-def find_star_formation_snap(basePath, stype, start_snap, num_tracers):
-    """Computes snapshot of star formation for every tracer based on the parent index tables."""
-    
-    snaps = np.arange(start_snap, -1,-1)
-    star_formation_snap = np.full(num_tracers, -1, dtype = np.byte)
-    
-    for i, snap in enumerate(snaps):
-        file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{snap}.hdf5'
-        f = h5py.File(file,'r')
-        #only load information of state of tracer parent (gas/star)
-        new_parent_indices = f[f'snap_{snap}/parent_indices'][:,1]
-        f.close()
-        
-        if i > 0:
-            #save last snapshot of star formation, i.e. the highest snapshot at which the gas parent turns into a star
-            new_star = np.where(np.logical_and(np.logical_and(new_parent_indices == 0, old_parent_indices == 1), formation_snap == -1))
-            formation_snap[new_star] = snap + 1
-        
-        old_parent_indices = new_parent_indices.copy()
-    
-    return star_formation_snap
-
 @jit(nopython = True, parallel = True)
 def isSubGalaxy(sub_ids, final_offsets):
     """ Checks the number of tracers in each galaxy and marks the ones with 0 tracers."""
@@ -55,11 +33,15 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
     sub_medians = np.full((sub_ids.shape[0],3),np.nan)
     sub_medians_r_vir = np.full((sub_ids.shape[0],3),np.nan)
     
-    inside_2shmr = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
-    inside_r_vir = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
+    #all tracers from galaxies that are no longer centrals are marked as -1
+    #all tracers outside of galaxies (which are still centals) are marked as 0
+    #all tracers inside of galaxies (which are still centals) are marked as 1
+    
+    inside_2shmr = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
+    inside_r_vir = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
     
     num_new_stars = np.where(star_formation_snaps == target_snap)[0].shape[0]
-    dist_at_star_form = np.zeros(num_new_stars)
+    dist_at_star_form = np.full(num_new_stars, -1, dtype = np.float32)
     
     #compute offsets so the second loop can run in parallel
     
@@ -109,9 +91,14 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
         #radius crossings:
         
         in_gal = np.where(rad_dist < 2 * shmr[i])[0]
+        not_in_gal = np.where(rad_dist >= 2 * shmr[i])[0]
         inside_2shmr[indices_of_sub[in_gal]] = 1
+        inside_2shmr[indices_of_sub[not_in_gal]] = 0
+        
         in_halo = np.where(rad_dist < r_vir[i])[0]
+        not_in_halo = np.where(rad_dist >= r_vir[i])[0]
         inside_r_vir[indices_of_sub[in_halo]] = 1
+        inside_r_vir[indices_of_sub[not_in_halo]] = 0
         
         #radius at star formation (normalized by shmr):
         
@@ -232,27 +219,23 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     sub_ids_mw = groups['GroupFirstSub'][mw_ids]
     sub_ids_groups = groups['GroupFirstSub'][group_ids]
     sub_ids_giants = groups['GroupFirstSub'][giant_ids]
-    all_central_ids = groups['GroupFirstSub'][:]
+    central_ids = groups['GroupFirstSub'][:]
     
-    dwarf_inds = tF.getIndices(sub_ids_dwarfs, all_central_ids)
-    mw_inds = tF.getIndices(sub_ids_mw, all_central_ids)
-    group_inds = tF.getIndices(sub_ids_groups, all_central_ids)
-    giant_inds = tF.getIndices(sub_ids_giants, all_central_ids)
+#     dwarf_inds = tF.getIndices(sub_ids_dwarfs, all_central_ids)
+#     mw_inds = tF.getIndices(sub_ids_mw, all_central_ids)
+#     group_inds = tF.getIndices(sub_ids_groups, all_central_ids)
+#     giant_inds = tF.getIndices(sub_ids_giants, all_central_ids)
     
-    del groups, group_masses, dwarf_ids, mw_ids, group_ids, giant_ids, sub_ids_dwarfs, sub_ids_mw, sub_ids_groups, sub_ids_giants
+    del groups, group_masses, dwarf_ids, mw_ids, group_ids, giant_ids
 
-    sub_ids = all_central_ids
-    tree_ids = np.arange(num_subs)
-#     sub_ids = sub_ids_mw if halo_type == 'mw' else sub_ids_dwarves if halo_type == 'dwarves' else sub_ids_groups if halo_type == 'groups' else all_central_ids
+    sub_ids = np.arange(num_subs)
 
-#     ids = mw_ids if halo_type == 'mw' else dwarf_ids if halo_type == 'dwarves' else group_ids if halo_type == 'groups' else all_ids
-
-    #Filter out halos without any subhalo
-    subhaloFlag = np.ones(sub_ids.shape[0], dtype = np.ubyte)
-    subhaloFlag[np.where(sub_ids == -1)] = 0
+    #Filter out halos without any subhalo and satellites
+    subhaloFlag = np.zeros(num_subs, dtype = np.ubyte)
+    subhaloFlag[central_ids[np.where(central_ids != -1)]] = 1
     
     #load MPB trees
-    trees = loadMPBs(basePath, start_snap, ids = tree_ids, fields = ['SubfindID'])
+    trees = loadMPBs(basePath, start_snap, ids = sub_ids, fields = ['SubfindID'])
     
     #load data from files ---------------------------------------------------------------------------------
     sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5','r') 
@@ -336,9 +319,9 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     
     #now aquire the correct virial radii (consider only those galaxies that are still centrals):
     #-2 bc. GroupFirstSub could contain -1's
-    shmr = np.zeros(sub_ids.shape[0], dtype = float)
-    target_sub_ids = np.full(sub_ids.shape[0], -2, dtype = int)
-    r_vir = np.zeros(sub_ids.shape[0], dtype = float)
+    shmr = np.zeros(num_subs, dtype = np.float32)
+    target_sub_ids = np.full(num_subs, -2, dtype = np.int32)
+    r_vir = np.zeros(num_subs, dtype = np.float32)
     
     #tree check: find missing trees:
     missing = []
@@ -412,9 +395,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
         all_gas_pos = il.snapshot.loadSubset(basePath,target_snap, 'gas', fields = ['Coordinates'])
         all_star_pos = il.snapshot.loadSubset(basePath,target_snap, 'stars', fields = ['Coordinates'])
     
-    #check memory usage
-#     print(psutil.virtual_memory().percent,' % of RAM used')
-    
         if isinstance(all_star_pos, dict):
             all_star_pos = np.zeros((1,3))
             
@@ -440,8 +420,8 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     
     end = time.time()
     print('actual time for profiles: ',end-start)
-    return sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, dwarf_inds, mw_inds, group_inds,\
-giant_inds
+    return sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, sub_ids_dwarfs, sub_ids_mw,\
+sub_ids_groups, sub_ids_giants
 
 #---- settings----#
 run = int(sys.argv[1])
@@ -469,10 +449,10 @@ f.create_dataset('tracers_inside_halo', data = inside_halo)
 f.create_dataset('distance_at_star_formation', data = star_formation_dist)
 
 g = f.create_group('mass_bin_indices')
-g.create_dataset('dwarf_indices', data = dwarf_inds)
-g.create_dataset('mw_indices', data = mw_inds)
-g.create_dataset('group_indices', data = group_inds)
-g.create_dataset('giant_indices', data = giant_inds)
+g.create_dataset('sub_ids_dwarf', data = dwarf_inds)
+g.create_dataset('sub_ids_mw', data = mw_inds)
+g.create_dataset('sub_ids_group', data = group_inds)
+g.create_dataset('sub_ids_giant', data = giant_inds)
 
 f.close()
 

@@ -342,15 +342,15 @@ def binData_med(xVal, yVal, numBins=4, lower = 16, upper = 84):
             
     return xMed, yMed, ylow, yup
 
-def is_insitu(basePath, snap):
-    if snap > 9:
-        str_snap = str(snap)
-    else:
-        str_snap = f'0{snap}'
-    check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str_snap + '.hdf5','r')
-    insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
-    check.close()
-    return insitu
+# def is_insitu(basePath, snap):
+#     if snap > 9:
+#         str_snap = str(snap)
+#     else:
+#         str_snap = f'0{snap}'
+#     check = h5py.File(basePath[:-6] + 'postprocessing/StellarAssembly/stars_0' + str_snap + '.hdf5','r')
+#     insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
+#     check.close()
+#     return insitu
 
 def running_median_insort(seq, window_size):
     """Contributed by Peter Otten"""
@@ -398,7 +398,7 @@ def searchsorted_nb_right(a, b):
         res[i] = np.searchsorted(a, b[i], side='right')
     return res 
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True)
 def insert00(arr):
     res = np.empty(len(arr)+1, dtype = arr.dtype)
     res[0] = 0

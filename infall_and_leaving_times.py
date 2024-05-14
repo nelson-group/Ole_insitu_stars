@@ -36,9 +36,12 @@ def crossing_snapshots(run, stype, start_snap):
         always_outside_galaxy[np.where(new_inside_galaxy == 1)] = 0
         
         if i > 0:
+            # find latest (at highest snapshot) galaxy infall time when no other infall has been detected yet (galaxy_infall = -1)
+            # -> this is the infall into the galaxy in which they're located at z=0
             new_in_gal = np.where(np.logical_and(np.logical_and(new_inside_galaxy == 0, old_inside_galaxy == 1), galaxy_infall == -1))
             galaxy_infall[new_in_gal] = snap + 1
             
+            #same for halo
             new_in_halo = np.where(np.logical_and(np.logical_and(new_inside_halo == 0, old_inside_halo == 1), halo_infall == -1))
             halo_infall[new_in_halo] = snap + 1        
         

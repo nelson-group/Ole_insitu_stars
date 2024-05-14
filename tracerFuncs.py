@@ -69,9 +69,10 @@ def getIndices(search_ids,ids):
 #     return all_gas_ids[gas_indices], all_star_ids[star_indices]
 
 
-@jit(nopython = True)
-    indices = np.nonzero(funcs.isin(ids,search_ids))[0]
-    return indices
+# @jit(nopython = True)
+# def getIndices(search_ids, ids):
+#     indices = np.nonzero(funcs.isin(ids,search_ids))[0]
+#     return indices
 
 @njit
 def sortIDs(parentIDs, tracer_indices):
@@ -129,7 +130,6 @@ def tracersInSubhalo(StarsInSubOffset, TracersInStarOffset):
     TracersInSubOffset = np.cumsum(TracersInSubOffset)
     return TracersInSubOffset
 
-<<<<<<< HEAD
 #@jit(nopython = True, parallel = True)
 def createSortedArrays(star_ids, parent_ids, tracer_ids, StarOffsetsInSubs):
     #first determine how many tracers there are for every star
