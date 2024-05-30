@@ -13,7 +13,7 @@ def gather_star_formation_distances(run, stype, start_snap):
     star_formation_dist = np.full(star_formation_snaps.shape[0], -1, dtype = float)
     
     for i, snap in enumerate(snaps):
-        f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_cut21_{snap}.hdf5','r')
+        f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_{snap}.hdf5','r')
         dist_at_star_form = f['distance_at_star_formation'][:]
         f.close()
         new_stars = np.where(star_formation_snaps == snap)[0]
