@@ -153,3 +153,31 @@ def galaxy_ages(basePath, snap, onlyCentrals = False, onlyInsitu = False):
     end = time.time()
     print('done in ', end - start)
     return galaxy_form_z
+
+def plot_vs_galaxy_mass(values, run, snap, f, f_args = {}, mask = None):
+    '''
+    Bins data given for every subhalo w.r.t. galaxy stellar mass.
+    '''
+    basePath = f'/virgotng/universe/IllustrisTNG/TNG50-{run}/output'
+    header = il.groupcat.loadHeader(basePath, snap)
+    h_const = header['HubbleParam']
+    if mask is None:
+        num_subs = header['Nsubgroups_Total']
+        mask = np.arange(num_subs)
+    
+    stellar_masses = il.groupcat.loadSubhalos(basePath, snap, fields = ['SubhaloMassInRadType'])[mask,4] * 1e10/h_const
+    
+    values = values[mask]
+    
+    nonzero = np.nonzero(stellar_masses)[0]
+    masses = np.log10(stellar_masses[nonzero])
+    values = values[nonzero]
+    
+    assert values.shape[0] == masses.shape[0], 'something went wrong'
+    
+    res = f(masses, values ,**f_args)
+    
+    mass_bins = res[0]
+    value_bins = res[1]
+    
+    return mass_bins, value_bins
