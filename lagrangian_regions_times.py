@@ -13,6 +13,22 @@ import psutil
 sys.path.append('/vera/u/olwitt/illustris_python/illustris_python')
 from loadMPBs import loadMPBs
 
+@jit(nopython = True)
+def distance_binning(distance, numBins, max_dist): 
+    minVal = 0
+    maxVal = max_dist
+    
+    binWidth = (maxVal - minVal) / numBins
+    
+    yMed = np.zeros(numBins)
+    
+    for j in range(numBins):
+        relInd = np.where(np.logical_and(distance >= minVal + j*binWidth, distance < minVal + (j+1)*binWidth))[0]
+        if(relInd.shape[0] > 0):
+            yMed[j] = relInd.shape[0] / distance.shape[0]
+            
+    return yMed
+
 @jit(nopython = True, parallel = True)
 def isSubGalaxy(sub_ids, final_offsets):
     """ Checks the number of tracers in each galaxy and marks the ones with 0 tracers."""
@@ -26,12 +42,26 @@ def isSubGalaxy(sub_ids, final_offsets):
     return noGalaxy
 
 @jit(nopython = True, parallel = True)
-def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets, all_gas_pos, all_star_pos,\
-                      sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize, star_formation_snaps, target_snap):
+def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir,\
+              boxSize, star_formation_snaps, target_snap, shmr_cut, r_vir_cut, accretion_channels, situ_cat, return_profiles, num_hmr,\
+              num_r_vir, num_bins):
     """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed. Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
     
-    sub_medians = np.full((sub_ids.shape[0],3),np.nan)
-    sub_medians_r_vir = np.full((sub_ids.shape[0],3),np.nan)
+    sub_medians = np.full((sub_ids.shape[0],3,3),np.nan, dtype = np.float32)
+    sub_medians_r_vir = np.full((sub_ids.shape[0],3,3),np.nan, dtype = np.float32)
+    
+    if return_profiles:
+        profiles_hmr = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
+        profiles_r_vir = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
+        
+        profiles_situ_hmr = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
+        profiles_situ_r_vir = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
+    else:
+        profiles_hmr = np.zeros((1,1,1), dtype = np.float32)
+        profiles_r_vir = np.zeros((1,1,1), dtype = np.float32)
+        
+        profiles_situ_hmr = np.zeros((1,1,1), dtype = np.float32)
+        profiles_situ_r_vir = np.zeros((1,1,1), dtype = np.float32)
     
     #all tracers from galaxies that are no longer centrals are marked as -1
     #all tracers outside of galaxies (which are still centals) are marked as 0
@@ -68,8 +98,7 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
             
         sub_id = sub_ids[i]
         indices_of_sub = np.arange(final_offsets[sub_id],final_offsets[sub_id+1])
-        location_of_sub_at_cut = location_at_cut[indices_of_sub]
-        isInMP_of_sub_at_cut = isInMP_at_cut[indices_of_sub]
+        ac_ch_at_cut = accretion_channels[indices_of_sub]
         
         parent_indices_of_sub = parent_indices_data[indices_of_sub,:]
 
@@ -83,20 +112,19 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
         star_parent_indices = parent_indices_of_sub[star_mask,0]
         particle_pos[star_mask,:] = all_star_pos[star_parent_indices,:]
         
-        #prior: sub_id instead of index!!!
         subhalo_position = sub_pos_at_target_snap[sub_id,:] 
 
         rad_dist = funcs.dist_vector_nb(subhalo_position,particle_pos,boxSize)
         
         #radius crossings:
         
-        in_gal = np.where(rad_dist < 2 * shmr[i])[0]
-        not_in_gal = np.where(rad_dist >= 2 * shmr[i])[0]
+        in_gal = np.where(rad_dist < shmr_cut * shmr[i])[0]
+        not_in_gal = np.where(rad_dist >= shmr_cut * shmr[i])[0]
         inside_2shmr[indices_of_sub[in_gal]] = 1
         inside_2shmr[indices_of_sub[not_in_gal]] = 0
         
-        in_halo = np.where(rad_dist < r_vir[i])[0]
-        not_in_halo = np.where(rad_dist >= r_vir[i])[0]
+        in_halo = np.where(rad_dist < r_vir_cut * r_vir[i])[0]
+        not_in_halo = np.where(rad_dist >= r_vir_cut * r_vir[i])[0]
         inside_r_vir[indices_of_sub[in_halo]] = 1
         inside_r_vir[indices_of_sub[not_in_halo]] = 0
         
@@ -106,43 +134,89 @@ def distances(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets
         num_new_stars_in_sub = new_stars_in_sub.shape[0]
         dist_at_star_form[star_form_offsets[i]:star_form_offsets[i+1]] = rad_dist[new_stars_in_sub] / shmr[i]
         
-        #Lagrangian region computations:
+        #igm_mask: all tracers directly from the igm, i.e. from fresh accretion ('0') or nep wind recycling ('1')
+        #satellite_mask: all tracers that entered via mergers ('2')
+        igm_mask = np.where(funcs.isin(ac_ch_at_cut,np.array([0,1])))[0]
+        satellite_mask = np.where(ac_ch_at_cut == 2)[0]
         
-        igm_mask = np.where(location_of_sub_at_cut == -1)[0]
-        satellite_mask = np.where((location_of_sub_at_cut != -1) & (np.logical_not(isInMP_of_sub_at_cut)))[0]
+        
+        #radial profiles:
+        if return_profiles:
+            
+            for j in range(3):
+                if j == 0:
+                    subset = np.arange(indices_of_sub.shape[0])
+                    subset2 = subset
+                elif j == 1:
+                    #insitu
+                    subset = np.where(situ_cat[indices_of_sub] == 0)[0]
+                    subset2 = igm_mask
+                    
+                else:
+                    #medsitu
+                    subset = np.where(situ_cat[indices_of_sub] == 1)[0]
+                    subset2 = satellite_mask
                 
-        if rad_dist.size > 0:
-            sub_medians[i,0] = np.median(rad_dist) / shmr[i]
-            
-        if igm_mask.size > 0:
-            sub_medians[i,1] = np.median(rad_dist[igm_mask]) / shmr[i]
+                max_dist = num_hmr * shmr[i]
+                if subset.shape[0] > 0:
+                    profiles_situ_hmr[i,j,:] = distance_binning(rad_dist[subset],num_bins, max_dist)
+                if subset2.shape[0] > 0:    
+                    profiles_hmr[i,j,:] = distance_binning(rad_dist[subset2],num_bins, max_dist)
 
-        if satellite_mask.size > 0:
-            sub_medians[i,2] = np.median(rad_dist[satellite_mask]) / shmr[i]
-            
-        if rad_dist.size > 0:
-            sub_medians_r_vir[i,0] = np.median(rad_dist) / r_vir[i]
-            
-        if igm_mask.size > 0:
-            sub_medians_r_vir[i,1] = np.median(rad_dist[igm_mask]) / r_vir[i]
-
-        if satellite_mask.size > 0:
-            sub_medians_r_vir[i,2] = np.median(rad_dist[satellite_mask]) / r_vir[i]
-            
+                max_dist = num_r_vir * r_vir[i]
+                if subset.shape[0] > 0:
+                    profiles_situ_r_vir[i,j,:] = distance_binning(rad_dist[subset],num_bins, max_dist)
+                if subset2.shape[0] > 0:
+                    profiles_r_vir[i,j,:] = distance_binning(rad_dist[subset2],num_bins, max_dist)
         
-    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form
+        #Lagrangian region computations:
+        for j in range(3):
+            if j == 0:
+                subset = np.arange(indices_of_sub.shape[0])
+            elif j == 1:
+                #insitu
+                subset = np.where(situ_cat[indices_of_sub] == 0)[0]
+            else:
+                #medsitu
+                subset = np.where(situ_cat[indices_of_sub] == 1)[0]
+
+            if subset.shape[0] == 0:
+                continue
+                
+            subset_igm_mask = np.nonzero(funcs.isin(subset,igm_mask))[0]
+            subset_satellite_mask = np.nonzero(funcs.isin(subset,satellite_mask))[0]
+            
+            sub_medians[i,j,0] = np.median(rad_dist[subset]) / shmr[i]
+            sub_medians_r_vir[i,j,0] = np.median(rad_dist[subset]) / r_vir[i]
+            
+            if subset_igm_mask.size > 0:
+                sub_medians[i,j,1] = np.median(rad_dist[subset_igm_mask]) / shmr[i]
+                sub_medians_r_vir[i,j,1] = np.median(rad_dist[subset_igm_mask]) / r_vir[i]
+
+            if subset_satellite_mask.size > 0:
+                sub_medians[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / shmr[i]
+                sub_medians_r_vir[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / r_vir[i]
+        
+    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form, profiles_hmr, profiles_r_vir, profiles_situ_hmr, profiles_situ_r_vir
 
 @jit(nopython = True, parallel = True)
-def distances_dm(parent_indices_data, location_at_cut, isInMP_at_cut, final_offsets, all_dm_pos,\
-                      sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize, target_snap):
+def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize,\
+                 target_snap, shmr_cut, r_vir_cut, return_profiles, num_hmr, num_r_vir, num_bins):
     """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed. Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
     
-    sub_medians = np.full((sub_ids.shape[0],3),np.nan)
-    sub_medians_r_vir = np.full((sub_ids.shape[0],3),np.nan)
+    sub_medians = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
+    sub_medians_r_vir = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
     
-    inside_2shmr = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
-    inside_r_vir = np.zeros(parent_indices_data.shape[0], dtype = np.ubyte)
+    inside_2shmr = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
+    inside_r_vir = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
         
+    if return_profiles:
+        profiles_hmr = np.full((sub_ids.shape[0],num_bins), np.nan, dtype = np.float32)
+        profiles_r_vir = np.full((sub_ids.shape[0],num_bins), np.nan, dtype = np.float32)
+    else:
+        profiles_hmr = np.zeros((1,1,1), dtype = np.float32)
+        profiles_r_vir = np.zeros((1,1,1), dtype = np.float32)
+    
     for i in nb.prange(sub_ids.shape[0]):
         
         #skip unsuitable subhalos 
@@ -151,57 +225,53 @@ def distances_dm(parent_indices_data, location_at_cut, isInMP_at_cut, final_offs
             
         sub_id = sub_ids[i]
         indices_of_sub = np.arange(final_offsets[sub_id],final_offsets[sub_id+1])
-        location_of_sub_at_cut = location_at_cut[indices_of_sub]
-        isInMP_of_sub_at_cut = isInMP_at_cut[indices_of_sub]
-        
         dm_indices_of_sub = parent_indices_data[indices_of_sub]
-
         particle_pos = all_dm_pos[dm_indices_of_sub,:]
         
-        subhalo_position = sub_pos_at_target_snap[sub_id,:] #prior: sub_id instead of index!!!
+        subhalo_position = sub_pos_at_target_snap[sub_id,:]
 
         rad_dist = funcs.dist_vector_nb(subhalo_position,particle_pos,boxSize)
         
         #radius crossings:
         
-        in_gal = np.where(rad_dist < 2 * shmr[i])[0]
+        in_gal = np.where(rad_dist < shmr_cut * shmr[i])[0]
+        not_in_gal = np.where(rad_dist >= shmr_cut * shmr[i])[0]
         inside_2shmr[indices_of_sub[in_gal]] = 1
-        in_halo = np.where(rad_dist < r_vir[i])[0]
+        inside_2shmr[indices_of_sub[not_in_gal]] = 0
+        
+        in_halo = np.where(rad_dist < r_vir_cut * r_vir[i])[0]
+        not_in_halo = np.where(rad_dist >= r_vir_cut * r_vir[i])[0]
         inside_r_vir[indices_of_sub[in_halo]] = 1
+        inside_r_vir[indices_of_sub[not_in_halo]] = 0
+        
+        #radial profiles:
+        
+        if return_profiles:
+            max_dist = num_hmr * shmr[i]
+            profiles_hmr[i,:] = distance_binning(rad_dist, num_bins, max_dist)
+            
+            max_dist = num_r_vir * r_vir[i]
+            profiles_r_vir[i,:] = distance_binning(rad_dist, num_bins, max_dist)
         
         #Lagrangian region computations:
-        
-        igm_mask = np.where(location_of_sub_at_cut == -1)[0]
-        satellite_mask = np.where((location_of_sub_at_cut != -1) & (np.logical_not(isInMP_of_sub_at_cut)))[0]
                 
         if rad_dist.size > 0:
-            sub_medians[i,0] = np.median(rad_dist) / shmr[i]
-            
-        if igm_mask.size > 0:
-            sub_medians[i,1] = np.median(rad_dist[igm_mask]) / shmr[i]
-
-        if satellite_mask.size > 0:
-            sub_medians[i,2] = np.median(rad_dist[satellite_mask]) / shmr[i]
+            sub_medians[i] = np.median(rad_dist) / shmr[i]
             
         if rad_dist.size > 0:
-            sub_medians_r_vir[i,0] = np.median(rad_dist) / r_vir[i]
-            
-        if igm_mask.size > 0:
-            sub_medians_r_vir[i,1] = np.median(rad_dist[igm_mask]) / r_vir[i]
+            sub_medians_r_vir[i] = np.median(rad_dist) / r_vir[i]
+    
+    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, profiles_hmr, profiles_r_vir
 
-        if satellite_mask.size > 0:
-            sub_medians_r_vir[i,2] = np.median(rad_dist[satellite_mask]) / r_vir[i]
-            
-        
-    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir
-
-def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
+def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_cut, use_sfr_gas_hmr = False,\
+                      return_profiles = False, num_shmr = None, num_r_vir = None, numBins = None, cumulative = True):
     start_loading = time.time()
     header = il.groupcat.loadHeader(basePath,target_snap)
     redshift = header['Redshift']
     h_const = header['HubbleParam']
     boxSize = header['BoxSize']
     num_subs = il.groupcat.loadHeader(basePath,start_snap)['Nsubgroups_Total']
+    run = basePath[38]
 
     #introduce mass bins (just for analysis, not for computation):
     groups = il.groupcat.loadHalos(basePath, start_snap, fields = ['Group_M_Crit200','GroupFirstSub'])
@@ -245,16 +315,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,99-target_snap,:]
     sub_positions.close()
     
-    #identical for in-situ/ex-situ/dm
-    loc_file = h5py.File(f'/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/subhalo_index_table.hdf5','r')
-    location = loc_file[f'snap_{cut_snap}/location'][:]
-    
-    location_type = loc_file[f'snap_{cut_snap}/location_type'][:]
-    isInMP = np.zeros(location_type.shape[0], dtype = np.ubyte)
-    isInMP[np.isin(location_type,np.array([1,2]))] = 1
-    del location_type
-    loc_file.close()
-    
     if stype.lower() in ['insitu', 'exsitu']:
         file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{target_snap}.hdf5'
         f = h5py.File(file,'r')
@@ -281,6 +341,12 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
         
         del insituStarsInSubOffset, numTracersInParents
         
+        #load accretion channels for tracers
+        file = '/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + f'/tracer_accretion_channels_{start_snap}.hdf5'
+        f = h5py.File(file,'r')
+        accretion_channels = f['tracer_accretion_channels'][:]
+        f.close()
+        
     elif stype.lower() in ['dm', 'darkmatter', 'dark_matter', 'dark matter']:
         stype = 'dm'
         
@@ -293,6 +359,8 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
         
         final_offsets = f['dmInSubOffset'][:]
         f.close()
+        
+        accretion_channels = None
         
     else:
         raise Exception('Invalid star/particle type!')
@@ -315,8 +383,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     print('# of galaxies with 0 tracers: ', np.nonzero(noGalaxy)[0].shape[0])
     del noGalaxy
     
-    #<until here, subhaloFlag is identical for every snapshot>
-    
     #now aquire the correct virial radii (consider only those galaxies that are still centrals):
     #-2 bc. GroupFirstSub could contain -1's
     shmr = np.zeros(num_subs, dtype = np.float32)
@@ -337,6 +403,8 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     for i in range(sub_ids.shape[0]):
         if sub_ids[i] in missing or sub_ids[i] >= num_subs:
             subhaloFlag[i] = 0
+            
+    #<until here, subhaloFlag is identical for every snapshot>
     
     #only load subfindIDs of subhalos with Flag=1
     for i in range(sub_ids.shape[0]):
@@ -352,27 +420,45 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     
     #check first whether there are any halos at all
     if isinstance(groupFirstSub, dict):
-        print(f'No groups at snapshot {target_snap}! -> return = 10*[-1]')
-        return 10*(np.array([-1]),)
+        print(f'No groups at snapshot {target_snap}! -> return = 12*[-1]')
+        return 12*(np.array([-1]),)
         
     central_sub_ids_at_target_snap, GFS_inds, TSID_inds = np.intersect1d(groupFirstSub, target_sub_ids, return_indices = True)
     r_vir_cat = il.groupcat.loadHalos(basePath, target_snap, fields = ['Group_R_Crit200'])[GFS_inds]
     r_vir[TSID_inds] = r_vir_cat
     shmr_cat = il.groupcat.loadSubhalos(basePath, target_snap, fields = ['SubhaloHalfmassRadType'])[central_sub_ids_at_target_snap,4]
-    shmr[TSID_inds] = shmr_cat
+    
+    #activate if necessary:
+    sfr_gas_cat = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/SubhaloHalfmassRad_Gas_Sfr_{target_snap}.hdf5'
+    f = h5py.File(sfr_gas_cat, 'r')
+    sfr_gas_hmr = f['SubhaloHalfmassRad_Gas_Sfr'][:]
+    
+    #Flag = 0 indicates no starforming gas cells in that halo
+    sfr_gas_hmr_subhaloFlag = f['subhaloFlag'][:]
+    f.close()
+    
+    sfr_gas_hmr_cat = sfr_gas_hmr[central_sub_ids_at_target_snap]
+    
+    # either use stellar halfmass radii oder starforming gas halfmass radii
+    if not use_sfr_gas_hmr:
+        shmr[TSID_inds] = shmr_cat
+    else:
+        shmr[TSID_inds] = sfr_gas_hmr_cat
 
-    #only keep subhalos that are still centrals
+    #only keep subhalos that are still centrals -> basically every central at z=0 is also a central at earlier times (until the formation
+    #snapshot)
     mask = np.full(sub_ids.shape[0], True)
     mask[TSID_inds] = False
     subhaloFlag[mask] = 0 
     
-    del TSID_inds, GFS_inds, central_sub_ids_at_target_snap, r_vir_cat, shmr_cat
+    del TSID_inds, GFS_inds, central_sub_ids_at_target_snap, r_vir_cat, shmr_cat, sfr_gas_hmr_cat
     
     
     ######## this necessary?? #########
 #     zero_shmr = np.where(shmr <= 0.0001)[0]
 #     zero_r_vir = np.where(r_vir <= 0.1)[0]
     zero_shmr = np.where(shmr == 0)[0]
+#     -> filters out all galaxies not currently forming stars. This also includes central galaxies that are among central_sub_ids_at_target_snap but do not form stars. They have (as initialized) a half-mass radius of star forming gas of 0.
     zero_r_vir = np.where(r_vir == 0)[0]
     
     subhaloFlag[zero_shmr] = 0
@@ -386,11 +472,23 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
     
     #get star formation snapshot for all tracers
     
+    mid = time.time()
+    print('time for loading and shit: ',mid-start_loading)
+    
     if stype in ['insitu', 'exsitu']:
         f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
         star_formation_snaps = f['star_formation_snapshot'][:]
         f.close()
-    
+        
+        if stype == 'insitu':
+            file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/insitu_or_medsitu_{start_snap}.hdf5'
+            f = h5py.File(file,'r')
+            #0: insitu, 1: medsitu
+            situ_cat = f['stellar_assembly'][:]
+            f.close()
+        else:
+            situ_cat = np.zeros(1, dtype = np.ubyte)
+        
         #load particle positions only right before computation begins
         all_gas_pos = il.snapshot.loadSubset(basePath,target_snap, 'gas', fields = ['Coordinates'])
         all_star_pos = il.snapshot.loadSubset(basePath,target_snap, 'stars', fields = ['Coordinates'])
@@ -399,60 +497,113 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap):
             all_star_pos = np.zeros((1,3))
             
         start = time.time()
-        print('time for loading and shit: ',start-start_loading)
+        print('time for coordinate loading: ',start-mid)
             
-        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, star_formation_dist =\
-        distances(parent_indices_data, location, isInMP, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag,\
-              sub_ids, shmr, r_vir, boxSize, star_formation_snaps, target_snap)
+        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, star_formation_dist, profiles_hmr, profiles_r_vir, profiles_situ_hmr,\
+        profiles_situ_r_vir =\
+        distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir,\
+                  boxSize, star_formation_snaps, target_snap, shmr_cut, r_vir_cut, accretion_channels, situ_cat, return_profiles, num_hmr,\
+                  num_r_vir, numBins)
+        
+        #convert to cumulative profiles if requested
+        if cumulative and return_profiles:
+            profiles_hmr = np.cumsum(profiles_hmr, axis = 2)
+            profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2)
+            if stype == 'insitu':
+                profiles_situ_hmr = np.cumsum(profiles_situ_hmr, axis = 2)
+                profiles_situ_r_vir = np.cumsum(profiles_situ_r_vir, axis = 2)
         
     else:
         all_dm_pos = il.snapshot.loadSubset(basePath, target_snap, 'dm', fields = ['Coordinates'])
         
         start = time.time()
-        print('time for loading and shit: ',start-start_loading)
+        print('time for coordinate loading: ',start-mid)
         
-        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo =\
-        distances_dm(parent_indices_data, location, isInMP, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag,\
-              sub_ids, shmr, r_vir, boxSize, target_snap)
+        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, profiles_hmr, profiles_r_vir =\
+        distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize,\
+                     target_snap, shmr_cut, r_vir_cut, return_profiles, num_hmr, num_r_vir, numBins)
         
-        star_formation_dist = np.array([-1])
+        star_formation_dist = None
     
+        #convert to cumulative profiles if requested
+        if cumulative and return_profiles:
+            profiles_hmr = np.cumsum(profiles_hmr, axis = 2)
+            profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2)
     
     end = time.time()
     print('actual time for profiles: ',end-start)
     return sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, sub_ids_dwarfs, sub_ids_mw,\
-sub_ids_groups, sub_ids_giants
+sub_ids_groups, sub_ids_giants, profiles_hmr, profiles_r_vir, profiles_situ_hmr, profiles_situ_r_vir
 
 #---- settings----#
 run = int(sys.argv[1])
 stype = str(sys.argv[2])
 target_snap = int(sys.argv[3])
-cut_snap = int(sys.argv[4])
 basePath='/virgotng/universe/IllustrisTNG/TNG50-' + str(run) + '/output'
 start_snap = 99
+use_sfr_gas_hmr = True
+return_profiles = True
+cumulative = True
+
+shmr_cut = 2
+r_vir_cut = 1
+
+numBins = 101
+num_r_vir = 15
+num_hmr = int(num_r_vir * 40 / 3) #200shmr or 15 r_vir are good numbers
+dist_bins_hmr = np.linspace(0,num_hmr,numBins)
+dist_bins_r_vir = np.linspace(0,num_r_vir,numBins)
 start = time.time()
 
-assert isdir('/vera/ptmp/gc/olwitt/' + stype + '/'+basePath[32:39]+'/lagrangian_regions')
+assert isdir('/vera/ptmp/gc/olwitt/' + stype + '/' +basePath[32:39] + '/lagrangian_regions')
 
 sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, dwarf_inds, mw_inds, group_inds,\
-giant_inds = lagrangian_region(basePath, stype, start_snap, target_snap, cut_snap)
+giant_inds, cum_rad_prof_hmr, cum_rad_prof_r_vir, profiles_situ_hmr, profiles_situ_r_vir =\
+lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_cut, use_sfr_gas_hmr, return_profiles, num_hmr, num_r_vir,\
+                  numBins, cumulative)
 
-f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/'+basePath[32:39]+\
-              f'/lagrangian_regions/lagrangian_regions_cut{cut_snap}_{target_snap}.hdf5','w')
+user = '/vera/ptmp/gc/olwitt'
+
+
+filename = user + '/' + stype + '/' + basePath[32:39] + '/lagrangian_regions/lagrangian_regions_'
+
+if return_profiles:
+    filename = filename + f'w_profiles_{target_snap}_test.hdf5'
+else:
+    filename = filename + f'{target_snap}_test.hdf5'
+
+
+f = h5py.File(filename,'w')
 
 f.create_dataset('lagrangian_regions_shmr',data = sub_medians)
 f.create_dataset('lagrangian_regions_r_vir',data = sub_medians_r_vir)
 
+if return_profiles:
+    if cumulative:
+        f.create_dataset('cumulative_radial_profiles_hmr', data = cum_rad_prof_hmr)
+        f.create_dataset('cumulative_radial_profiles_r_vir', data = cum_rad_prof_r_vir)
+        if stype == 'insitu':
+            f.create_dataset('cumulative_radial_profiles_situ_hmr', data = profiles_situ_hmr)
+            f.create_dataset('cumulative_radial_profiles_situ_r_vir', data = profiles_situ_r_vir)
+    else:
+        f.create_dataset('radial_profiles_hmr', data = cum_rad_prof_hmr)
+        f.create_dataset('radial_profiles_r_vir', data = cum_rad_prof_r_vir)
+        if stype == 'insitu':
+            f.create_dataset('radial_profiles_situ_hmr', data = profiles_situ_hmr)
+            f.create_dataset('radial_profiles_situ_r_vir', data = profiles_situ_r_vir)
+
 f.create_dataset('subhaloFlag', data = subhaloFlag)
 f.create_dataset('tracers_inside_galaxy', data = inside_galaxy)
 f.create_dataset('tracers_inside_halo', data = inside_halo)
-f.create_dataset('distance_at_star_formation', data = star_formation_dist)
 
-g = f.create_group('mass_bin_indices')
-g.create_dataset('sub_ids_dwarf', data = dwarf_inds)
-g.create_dataset('sub_ids_mw', data = mw_inds)
-g.create_dataset('sub_ids_group', data = group_inds)
-g.create_dataset('sub_ids_giant', data = giant_inds)
+if stype.lower() not in ['dm', 'darkmatter', 'dark_matter', 'dark matter']:
+    f.create_dataset('distance_at_star_formation', data = star_formation_dist)
+
+g = f.create_group('mass_bin_sub_ids')
+g.create_dataset('dwarfs', data = dwarf_inds)
+g.create_dataset('mws', data = mw_inds)
+g.create_dataset('groups', data = group_inds)
+g.create_dataset('giants', data = giant_inds)
 
 f.close()
 
