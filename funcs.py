@@ -161,12 +161,34 @@ def norm_axis1(arr):
         norms[i] = np.sqrt(np.sum(arr[i,:]*arr[i,:]))
     return norms
 
-def binData(val, numBins, mode = 'num', fixed_bins = False, mini = 0, maxi = 0):
-    if not fixed_bins:
-        minVal = min(val)
-        maxVal = max(val)
+def binData(val, numBins, mode = 'num', mini = None, maxi = None):
+    """
+    input:
+    
+    val: data to be binned
+    numBins: number of bins
+    mode: which function to use to combine data in each bin
+        options: num: count of data points in bin (default)
+                 frac: fraction of total number of data points in bin
+                 sum: sum of all values of the data points in bin
+                 sum_logs: sum of 10**val of all values in bin
+                 median: median value of all data points in bin (ignoring NaN)
+                 
+    mini: lower boundary of leftmost bin (default: None)
+    maxi: upper boundary of rightmost bin (default: None)
+    
+    output:
+    
+    bins: the bins as a linspace specified by either the data itself or mini and maxi
+    frac: the result array, i.e. the result for each bin
+    """
+    
+    
+    if mini is None:
+        minVal = np.nanmin(val)
+        maxVal = np.nanmax(val)
     else:
-        if mini < maxi:
+        if mini < maxi and mini is not None and maxi is not None:
             minVal = mini
             maxVal = maxi
         else:
@@ -189,6 +211,8 @@ def binData(val, numBins, mode = 'num', fixed_bins = False, mini = 0, maxi = 0):
             frac[b] = np.sum(10**val[indices])
         elif mode == 'median':
             frac[b] = np.nanmedian(val[indices])
+        elif mode == 'mean':
+            frac[b] = np.nanmean(val[indices])
         else:
             frac[b] = np.nan
 
