@@ -21,7 +21,7 @@ def crossing_snapshots(run, stype, start_snap):
     always_outside_galaxy = np.ones(num_tracers, dtype = np.byte)
     
     for i, snap in enumerate(snaps):
-        f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_cut21_{snap}.hdf5','r')
+        f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_{snap}.hdf5','r')
         new_inside_galaxy = f['tracers_inside_galaxy'][:]
         new_inside_halo = f['tracers_inside_halo'][:]
         f.close()
