@@ -237,7 +237,7 @@ savefig.bbox        : standard ## 'tight' or 'standard'.
                                 ## e.g. setting animation.writer to ffmpeg will not work,
                                 ## use ffmpeg_file instead
 savefig.pad_inches  : 0.1      ## Padding to be used when bbox is set to 'tight'
-savefig.jpeg_quality: 95       ## when a jpeg is saved, the default quality parameter.
+# savefig.jpeg_quality: 95       ## when a jpeg is saved, the default quality parameter.
 # savefig.directory   : ~        ## default directory in savefig dialog box,
                                 ## leave empty to always use current working directory
 savefig.transparent : False    ## setting that controls whether figures are saved with a
@@ -276,5 +276,5 @@ keymap.grid : g                     ## switching on/off major grids in current a
 keymap.grid_minor : G               ## switching on/off minor grids in current axes
 keymap.yscale : l                   ## toggle scaling of y-axes ('log'/'linear')
 keymap.xscale : k, L                ## toggle scaling of x-axes ('log'/'linear')
-keymap.all_axes : a                 ## enable all axes
+# keymap.all_axes : a                 ## enable all axes
 keymap.copy : ctrl+c, cmd+c         ## Copy figure to clipboard
