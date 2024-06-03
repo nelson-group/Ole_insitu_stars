@@ -269,8 +269,8 @@ def binData_w_bins(val, bins):
 #         num[b] = indices.size      
 #     return num
 
-def binData_med(xVal, yVal, numBins=4):
-    """
+""" def binData_med(xVal, yVal, numBins=4):
+    
     Compute a running median from a set of (x,y) points.
 
     Input:
@@ -281,7 +281,7 @@ def binData_med(xVal, yVal, numBins=4):
     Output:
     xMed: Array of (median) x values.
     yNum: Array of y values.
-    """    
+       
     minVal = np.min(xVal)
     maxVal = np.max(xVal)
     
@@ -296,7 +296,7 @@ def binData_med(xVal, yVal, numBins=4):
             xMed[j] = np.nanmedian(xVal[relInd])
             yNum[j] = relInd.size
             
-    return xMed, yNum
+    return xMed, yNum """
 
 def binData_mean(xVal, yVal, numBins=4):
     """
