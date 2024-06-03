@@ -179,5 +179,8 @@ def plot_vs_galaxy_mass(values, run, snap, f, f_args = {}, mask = None):
     
     mass_bins = res[0]
     value_bins = res[1]
+
+    low = res[2]
+    up = res[3]
     
-    return mass_bins, value_bins
+    return mass_bins, value_bins, low, up
