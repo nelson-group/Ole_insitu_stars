@@ -64,10 +64,6 @@ def distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_
     
     sub_medians = np.zeros((num_subs,3,3), dtype = np.float32)
     sub_max = sub_medians.copy()
-    
-
-    #the following assertion is not fulfilled as we are only considering centrals. star_formation_snaps includes tracers of every subhalo
-#     assert star_form_offsets[-1] == num_new_stars
         
     for i in nb.prange(num_subs):
         
