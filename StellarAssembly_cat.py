@@ -16,21 +16,26 @@ def find_situ_type_for_every_star(situ, medsitu, numTracersInParents):
     
     insitu = np.where(res == 1)[0]
     
+    counter = np.zeros(num_insitu_stars, dtype = np.byte)
     #only go through in-situ stars again and check their formation type
     for i in nb.prange(num_insitu_stars):
         insitu_star_inds = np.arange(insituStarOffsets[i],insituStarOffsets[i+1])
-        #star_type = 0: in-situ, star_type = 1: med-situ
+        #medsitu = 0: in-situ, medsitu = 1: med-situ
         #add one, bc in-situ is 1 in res and med-situ thus has to be 2
         if insitu_star_inds.shape[0] > 0:
-            star_type = int(np.nanmedian(medsitu[insitu_star_inds])) + 1
+            if np.round(np.nanmedian(medsitu[insitu_star_inds]),0) != int(np.nanmedian(medsitu[insitu_star_inds])):
+                counter[i] = 1
+
+            star_type = np.round(np.nanmedian(medsitu[insitu_star_inds]),0) + 1
             res[insitu[i]] = star_type
     
+    print('Fraction of stars with ambiguous formation type:', np.sum(counter)/num_insitu_stars)
     return res
 
 def insitu_catalog(run, stype, start_snap):
     """Decides for every tracer whether it formed in-situ or med-situ. (Future: Updates the RG+16 definitions for central subhalos.)"""
     
-    basePath=f'/virgotng/universe/IllustrisTNG/TNG50-{run}/output'
+    basePath = f'/virgotng/universe/IllustrisTNG/TNG50-{run}/output'
     
     # catalogs to decide whether star is in-situ or med-situ
     
@@ -80,8 +85,8 @@ start_snap = 99
 
 cat, flags = insitu_catalog(run, stype, start_snap)
 
-file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/StellarAssembly_{start_snap}.hdf5'
+""" file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/StellarAssembly_{start_snap}.hdf5'
 f = h5py.File(file,'w')
 f.create_dataset('stellar_assembly', data = cat)
 f.create_dataset('subhalo_flag', data = flags)
-f.close()
+f.close() """

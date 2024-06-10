@@ -12,46 +12,11 @@ import sys
 sys.path.append('/vera/u/olwitt/illustris_python/illustris_python')
 from loadMPBs import loadMPBs
 
-
-def group_masses_for_sub_ids(groupMasses, subMasses, groupFirstSub, subIDs):
-    all_group_masses = np.zeros(subIDs.shape[0])
-    
-    #counter starts at first central before the first subID
-    halo_counter = int(groupFirstSub[np.max(np.where(groupFirstSub <= subIDs[0])[0])])
-    for i in range(subIDs.shape[0]):
-        if subIDs[i] == groupFirstSub[halo_counter]:
-            all_group_masses[i] = groupMasses[halo_counter]
-            halo_counter += 1
-            continue
-        all_group_masses[i] = subMasses[subIDs[i]]
-    
-    return all_group_masses
-
 def give_z_array(basePath):
     z = np.zeros(100)
     for i in range(99,-1,-1):
         z[99-i] = il.groupcat.loadHeader(basePath,i)['Redshift']
     return z
-
-#useless function, just use loadTree with the quantity!!
-# def give_subhalo_quantity_array(basePath, quantity, subID=-1):
-#     assert subID >= 0, 'specify subID!'
-#     tree = il.sublink.loadTree(basePath, 99, subID, fields=['SubfinID'], onlyMPB = True)
-#     res0 = il.groupcat.loadSingle(basePath, 99, subhaloID = subID)[str(quantity)]
-    
-#     if res0.size > 1:
-#         res = np.empty(shape = (98,res0.size), dtype = res0.dtype)
-#     else:
-#         res = np.empty(98, dtype = res0.dtype)
-#     res[97] = res0
-#     for i in range(98,1,-1):
-#         if 99 - i < tree['count']: #if tree has sufficient entries
-#             target_subID = tree['SubfindID'][start_snap - i]
-#             res[i-2] = il.groupcat.loadSingle(basePath, i, subhaloID = target_subID)[str(quantity)]
-#         else:
-#             res[i-1] = None
-    
-    return np.flip(res,axis=0)
 
 @jit(nopython = True, parallel = True)
 def compute_z_form(central_ids, trees, z, snap):
@@ -184,3 +149,19 @@ def plot_vs_galaxy_mass(values, run, snap, f, f_args = {}, mask = None):
     up = res[3]
     
     return mass_bins, value_bins, low, up
+
+@jit(nopython = True)#, parallel = True)
+def snap_to_z(z_arr, snap):
+    res = np.full(snap.shape[0], np.nan, dtype = np.float32)
+
+    # redshift 0 at index 99
+    if np.argmin(z_arr) == 0:
+        z_arr = z_arr[::-1]
+    
+    for i in range(snap.shape[0]):
+        # interpolate between the two closest snapshots
+        lower = int(snap[i])
+        upper = lower + 1
+
+        res[i] = z_arr[lower] + (z_arr[upper] - z_arr[lower]) * (snap[i] - lower)
+    return res

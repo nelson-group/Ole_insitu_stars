@@ -420,8 +420,8 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     
     #check first whether there are any halos at all
     if isinstance(groupFirstSub, dict):
-        print(f'No groups at snapshot {target_snap}! -> return = 12*[-1]')
-        return 12*(np.array([-1]),)
+        print(f'No groups at snapshot {target_snap}! -> return = 14*[-1]')
+        return 14*(np.array([-1]),)
         
     central_sub_ids_at_target_snap, GFS_inds, TSID_inds = np.intersect1d(groupFirstSub, target_sub_ids, return_indices = True)
     r_vir_cat = il.groupcat.loadHalos(basePath, target_snap, fields = ['Group_R_Crit200'])[GFS_inds]
@@ -529,7 +529,10 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         if cumulative and return_profiles:
             profiles_hmr = np.cumsum(profiles_hmr, axis = 2)
             profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2)
-    
+
+        profiles_situ_hmr = np.zeros(1)
+        profiles_situ_r_vir = np.zeros(1)
+
     end = time.time()
     print('actual time for profiles: ',end-start)
     return sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, sub_ids_dwarfs, sub_ids_mw,\
@@ -542,8 +545,8 @@ target_snap = int(sys.argv[3])
 basePath='/virgotng/universe/IllustrisTNG/TNG50-' + str(run) + '/output'
 start_snap = 99
 use_sfr_gas_hmr = True
-return_profiles = True
-cumulative = True
+return_profiles = False
+cumulative = False
 
 shmr_cut = 2
 r_vir_cut = 1
@@ -570,7 +573,7 @@ filename = user + '/' + stype + '/' + basePath[32:39] + '/lagrangian_regions/lag
 if return_profiles:
     filename = filename + f'w_profiles_{target_snap}_test.hdf5'
 else:
-    filename = filename + f'{target_snap}_test.hdf5'
+    filename = filename + f'{target_snap}.hdf5'
 
 
 f = h5py.File(filename,'w')

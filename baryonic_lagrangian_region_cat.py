@@ -306,7 +306,7 @@ subhaloFlag, dwarf_inds, mw_inds, group_inds, giant_inds, sub_medians, sub_max, 
 user = '/vera/ptmp/gc/olwitt'
 
 
-filename = user + '/auxCats/' + basePath[32:39] + f'/baryonic_lagrangian_regions{stype}.hdf5'
+filename = user + '/auxCats/' + basePath[32:39] + f'/baryonic_lagrangian_regions_{stype}.hdf5'
 
 
 f = h5py.File(filename,'w')
