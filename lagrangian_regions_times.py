@@ -41,11 +41,12 @@ def isSubGalaxy(sub_ids, final_offsets):
         noGalaxy[i] = 0
     return noGalaxy
 
-@jit(nopython = True, parallel = True)
-def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir,\
-              boxSize, star_formation_snaps, target_snap, shmr_cut, r_vir_cut, accretion_channels, situ_cat, return_profiles, num_hmr,\
-              num_r_vir, num_bins):
-    """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed. Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
+@jit(nopython = True)#, parallel = True)
+def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids,\
+               shmr, r_vir, boxSize, star_formation_snaps, target_snap, shmr_cut, r_vir_cut, accretion_channels, situ_cat,\
+                  return_profiles, num_hmr, num_r_vir, num_bins):
+    """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed.
+      Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
     
     sub_medians = np.full((sub_ids.shape[0],3,3),np.nan, dtype = np.float32)
     sub_medians_r_vir = np.full((sub_ids.shape[0],3,3),np.nan, dtype = np.float32)
@@ -87,7 +88,8 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
     star_form_offsets = funcs.insert(star_form_offsets, 0, 0)
 #     star_form_offsets = np.insert(star_form_offsets, 0, 0)
 
-    #the following assertion is not fulfilled as we are only considering centrals. star_formation_snaps includes tracers of every subhalo
+    # the following assertion is not fulfilled as we are only considering centrals.
+    # star_formation_snaps includes tracers of every subhalo
 #     assert star_form_offsets[-1] == num_new_stars
         
     for i in nb.prange(sub_ids.shape[0]):
@@ -197,12 +199,14 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
                 sub_medians[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / shmr[i]
                 sub_medians_r_vir[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / r_vir[i]
         
-    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form, profiles_hmr, profiles_r_vir, profiles_situ_hmr, profiles_situ_r_vir
+    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form, profiles_hmr, profiles_r_vir,\
+          profiles_situ_hmr, profiles_situ_r_vir
 
 @jit(nopython = True, parallel = True)
-def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize,\
-                 target_snap, shmr_cut, r_vir_cut, return_profiles, num_hmr, num_r_vir, num_bins):
-    """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed. Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
+def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir,\
+                  boxSize, shmr_cut, r_vir_cut, return_profiles, num_hmr, num_r_vir, num_bins):
+    """ For each galaxy with >1 tracers, the distance of every tracer to the (MP) subhalo center is computed.
+      Furthermore, it checks whether the tracers is located within the halo or even the galaxy."""
     
     sub_medians = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
     sub_medians_r_vir = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
@@ -422,7 +426,8 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     central_sub_ids_at_target_snap, GFS_inds, TSID_inds = np.intersect1d(groupFirstSub, target_sub_ids, return_indices = True)
     r_vir_cat = il.groupcat.loadHalos(basePath, target_snap, fields = ['Group_R_Crit200'])[GFS_inds]
     r_vir[TSID_inds] = r_vir_cat
-    shmr_cat = il.groupcat.loadSubhalos(basePath, target_snap, fields = ['SubhaloHalfmassRadType'])[central_sub_ids_at_target_snap,4]
+    shmr_cat = il.groupcat.loadSubhalos(basePath, target_snap, fields =\
+                                         ['SubhaloHalfmassRadType'])[central_sub_ids_at_target_snap,4]
     
     #activate if necessary:
     sfr_gas_cat = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/SubhaloHalfmassRad_Gas_Sfr_{target_snap}.hdf5'
@@ -448,37 +453,39 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         # special treatment for galaxies without starforming gas cells: use 4 times the stellar halfmass radius
         # to still include them in the analysis -> be careful as strange behaviour for these galaxies might occur
         shmr[TSID_inds[no_sfr]] = shmr_cat[no_sfr] * 2
-
-    #only keep subhalos that are still centrals -> basically every central at z=0 is also a central at earlier times (until the formation
+    
+    #only keep subhalos that are still centrals 
+    # -> basically every central at z=0 is also a central at earlier times (until the formation
     #snapshot)
+
+    print('number of galaxies: ', np.where(subhaloFlag == 1)[0].shape[0])
+    print('number of centrals: ', TSID_inds.shape[0])
+    print('number of galaxies without starforming gas cells: ', no_sfr.shape[0])
+
     mask = np.full(sub_ids.shape[0], True)
     mask[TSID_inds] = False
     subhaloFlag[mask] = 0 
     
-    del TSID_inds, GFS_inds, central_sub_ids_at_target_snap, r_vir_cat, shmr_cat, sfr_gas_hmr_cat
-    
-    
-    ######## this necessary?? #########
-#     zero_shmr = np.where(shmr <= 0.0001)[0]
-#     zero_r_vir = np.where(r_vir <= 0.1)[0]
+    # the masking below is necessary to avoid division by zero
     zero_shmr = np.where(shmr == 0)[0]
-#     -> filters out all galaxies not currently forming stars. This also includes central galaxies that are among central_sub_ids_at_target_snap but do not form stars. They have (as initialized) a half-mass radius of star forming gas of 0.
+    #-> filters out all galaxies without stars (non-sfr subs are already taken care of by using the stellar halfmass radius)
+
     zero_r_vir = np.where(r_vir == 0)[0]
-    
+    print('zero shmr (non-sfr): ', np.where(shmr[TSID_inds[no_sfr]] == 0)[0].shape[0])
+    print('zero shmr (sfr): ', np.where(shmr[TSID_inds[sfr]] == 0)[0].shape[0])
+    print('zero r_vir: ', np.where(r_vir[TSID_inds] == 0)[0].shape[0])
     subhaloFlag[zero_shmr] = 0
     subhaloFlag[zero_r_vir] = 0
-#     #exclude all galaxies with shmr smaller than 0.0001ckpc, i.e. essentially zero ckpc
-    
-#     #all galaxies without extrapolated sub_pos history or only 1 tracer or having a vanishing shmr: -1
-#     extrapolated_sub_ids[zero_r_norm] = -1
-#     #all galaxies without extrapolated sub_pos history or only 1 tracer or having a vanishing r_vir or being a satellite: -1
-#     extrapolated_central_sub_ids[zero_r_vir] = -1
-    
-    #get star formation snapshot for all tracers
-    
+
+    print('number of galaxies: ', np.where(subhaloFlag == 1)[0].shape[0])
+
+    del TSID_inds, GFS_inds, central_sub_ids_at_target_snap, r_vir_cat, shmr_cat, sfr_gas_hmr_cat, sfr_gas_hmr_subhaloFlag
+
     mid = time.time()
     print('time for loading and shit: ',mid-start_loading)
-    
+
+    # get star formation snapshot for all tracers
+
     if stype in ['insitu', 'exsitu']:
         f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
         star_formation_snaps = f['star_formation_snapshot'][:]
