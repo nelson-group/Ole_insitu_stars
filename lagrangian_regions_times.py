@@ -264,10 +264,9 @@ def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_targ
     return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, profiles_hmr, profiles_r_vir
 
 def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_cut, use_sfr_gas_hmr = False,\
-                      return_profiles = False, num_shmr = None, num_r_vir = None, numBins = None, cumulative = True):
+                      return_profiles = False, num_hmr = None, num_r_vir = None, numBins = None, cumulative = True):
     start_loading = time.time()
     header = il.groupcat.loadHeader(basePath,target_snap)
-    redshift = header['Redshift']
     h_const = header['HubbleParam']
     boxSize = header['BoxSize']
     num_subs = il.groupcat.loadHeader(basePath,start_snap)['Nsubgroups_Total']
@@ -282,7 +281,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     mw_ids = np.where(np.logical_and(group_masses > 10**(11.8), group_masses < 10**(12.2)))[0]
     group_ids = np.where(np.logical_and(group_masses > 10**(12.6), group_masses < 10**(13.4)))[0]
     giant_ids = np.where(group_masses > 10**(13.4))[0]
-    all_ids = np.arange(group_masses.shape[0])
 
     #find ids of associated centrals
     sub_ids_dwarfs = groups['GroupFirstSub'][dwarf_ids]
@@ -321,7 +319,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
 
         parent_indices = f[f'snap_{target_snap}/parent_indices'][:,:]
         parent_indices_data = parent_indices[:,:].astype(int)
-        num_tracers = parent_indices.shape[0]
     
     #offsets -----------------------------------------------------------------------------------------------
         #here, it's okay that the offsets at the target snapshot are used as they are identical at every snapshot
@@ -355,7 +352,6 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
 
         parent_indices = f[f'dm_indices'][:]
         parent_indices_data = parent_indices.astype(int)
-        num_tracers = parent_indices.shape[0]
         
         final_offsets = f['dmInSubOffset'][:]
         f.close()
@@ -440,10 +436,18 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     sfr_gas_hmr_cat = sfr_gas_hmr[central_sub_ids_at_target_snap]
     
     # either use stellar halfmass radii oder starforming gas halfmass radii
-    if not use_sfr_gas_hmr:
-        shmr[TSID_inds] = shmr_cat
-    else:
-        shmr[TSID_inds] = sfr_gas_hmr_cat
+    # there will be very few centrals at z=0 that are not centrals at earlier times
+    # -> TSID_inds can be used safely
+    shmr[TSID_inds] = shmr_cat
+    if use_sfr_gas_hmr:
+        # galaxies that have starforming gas cells
+        sfr = np.nonzero(sfr_gas_hmr_subhaloFlag[central_sub_ids_at_target_snap])[0]
+        # galaxies without starforming gas cells
+        no_sfr = np.where(sfr_gas_hmr_subhaloFlag[central_sub_ids_at_target_snap] == 0)[0]
+        shmr[TSID_inds[sfr]] = sfr_gas_hmr_cat[sfr]
+        # special treatment for galaxies without starforming gas cells: use 4 times the stellar halfmass radius
+        # to still include them in the analysis -> be careful as strange behaviour for these galaxies might occur
+        shmr[TSID_inds[no_sfr]] = shmr_cat[no_sfr] * 2
 
     #only keep subhalos that are still centrals -> basically every central at z=0 is also a central at earlier times (until the formation
     #snapshot)
