@@ -253,7 +253,7 @@ def match_general(ar1, ar2, is_sorted = False):
 def parentIndicesOfAll_slow(parent_ids, all_gas_ids, all_star_ids): #N*N
     #which parent corresponds to which gas/star particles?
     #for this: save index into gas('0') / star('1') subset array
-    target_parent_indices = np.zeros((len(parent_ids),2))
+    target_parent_indices = np.zeros((len(parent_ids),2), dtype = np.float32)
     
     for i in nb.prange(len(parent_ids)):
         ind = tF.where_one(parent_ids[i],all_gas_ids)
