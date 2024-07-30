@@ -6,6 +6,7 @@ import illustris_python as il
 import tracerFuncs as tF
 import funcs
 import locatingFuncs as lF
+import illustrisFuncs as iF
 import time
 from os.path import isfile, isdir
 import os
@@ -245,6 +246,12 @@ def save_location(basePath, stype, start_snap = 99):
     
     return
 
+###################################################################################################
+
+###################################################################################################
+
+########## fracs with mass bins (accretion channels) ##########
+
 def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1, save_cats = False):
     start = time.time()
     h_const = il.groupcat.loadHeader(basePath, start_snap)['HubbleParam']
@@ -259,6 +266,24 @@ def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1
     
     z = np.zeros(n)
 
+    groups = il.groupcat.loadHalos(basePath, start_snap, fields = ['Group_M_Crit200','GroupFirstSub'])
+    group_masses = groups['Group_M_Crit200']*1e10/h_const
+
+    #differentiate between halos of dwarf / milky way / group size
+    cluster_ids = np.where(group_masses >= 10**(13.4))[0]
+    group_ids = np.where(np.logical_and(group_masses >= 10**(12.6), group_masses < 10**(13.4)))[0]
+    mw_ids = np.where(np.logical_and(group_masses >= 10**(11.8), group_masses < 10**(12.2)))[0]
+    dwarf_ids = np.where(np.logical_and(group_masses >= 10**(10.8), group_masses < 10**(11.2)))[0]
+
+    #find ids of associated centrals
+    # dtype of sub_ids... is int32 -> change to int64
+    sub_ids_groups = groups['GroupFirstSub'][group_ids].astype(np.int64)
+    sub_ids_mws = groups['GroupFirstSub'][mw_ids].astype(np.int64)
+    sub_ids_dwarfs = groups['GroupFirstSub'][dwarf_ids].astype(np.int64)
+    sub_ids_clusters = groups['GroupFirstSub'][cluster_ids].astype(np.int64)
+
+    del groups, group_masses, group_ids, mw_ids, dwarf_ids, cluster_ids
+
     #necessary offsets, when not every tracer is important:
     if stype.lower() in ['insitu','in-situ','in']:
         stype = 'insitu'
@@ -266,7 +291,7 @@ def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1
     elif stype.lower() in ['exsitu','ex-situ','ex']:
         stype = 'exsitu'
         raise Exception('Not working at the moment! Only \"in-situ\" available.')
-        insituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath, start_snap)
+        # insituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath, start_snap)
     else:
         raise Exception('Invalid star/particle type!')
         
@@ -369,8 +394,8 @@ def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1
     
     total = np.zeros((n,3))
 
-    #n: snapshots, 5: galaxy baryonic mass bins, 3: [all tracers, insitu, medsitu], 8: fractions from above
-    nums = np.zeros((n,5,3,8))
+    #n: snapshots, 5: [all galaxies, dwarfs, mws, groups, clusters] 5: galaxy baryonic mass bins, 3: [all tracers, insitu, medsitu], 8: fractions from above
+    nums = np.zeros((n,5,5,3,8))
     
     #n: snapshots, sub_ids.shape[0]: for each galaxy, 3: [all tracers, insitu, medsitu], 8: fractions from above
     gal_comp = np.zeros((n,sub_ids.shape[0], 3,8)) #galaxy composition
@@ -473,7 +498,7 @@ def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1
         #add numbers to mass bins
         nums[i,:,:,:], gal_comp[i,:,:,:] = lF.binning(parent_indices, location, isInMP, isInMP_sat, isInCentral, sub_ids, situ_cat,\
                                                                       parentsInSubOffset, mass_bin1, mass_bin2, mass_bin3, mass_bin4,\
-                                                      mass_bin5)
+                                                      mass_bin5, subhaloFlag, sub_ids_dwarfs, sub_ids_mws, sub_ids_groups, sub_ids_clusters)
         
         medsitu = np.where(situ_cat == 1)[0]
         insitu = np.where(situ_cat == 0)[0]
@@ -687,10 +712,10 @@ def fracs_w_mass_bins(basePath, stype, sub_ids, start_snap = 99, random_frac = 1
 directly_from_igm, stripped_from_halos, from_other_halos, mergers, long_range_wind_recycled, nep_wind_recycled, stripped_from_satellites,\
 gal_accretion_channels
 
-@njit
+# @njit
 def binning(parent_indices, location, isInMP, isInMP_sat, isInCentral, sub_ids, situ_cat, offsets, mass_bin1, mass_bin2, mass_bin3,\
-            mass_bin4, mass_bin5):
-    res = np.zeros((5,3,8))
+            mass_bin4, mass_bin5, subhaloFlag, dwarf_ids, mw_ids, group_ids, cluster_ids):
+    res = np.zeros((5,5,3,8))
     gal_res = np.zeros((offsets.shape[0] - 1,3,8))
     
     #determine mass fractions for every galaxy individually
@@ -743,59 +768,76 @@ def binning(parent_indices, location, isInMP, isInMP_sat, isInCentral, sub_ids, 
             #obtain mass fractions
             gal_res[i,j,:7] = gal_res[i,j,:7] / gal_res[i,j,7] if gal_res[i,j,7] > 0 else gal_res[i,j,:7]
     
+    del indices
     #determine mass fractions for entire mass bins
-    for i in range(5):
-        mass_bin = mass_bin1 if i==0 else mass_bin2 if i==1 else mass_bin3 if i==2 else mass_bin4 if i==3 else\
-        mass_bin5
-        
-        indices = np.nonzero(funcs.isin(location,mass_bin))[0]
-        
-        medsitu = np.where(situ_cat[indices] == 1)[0]
-        insitu = np.where(situ_cat[indices] == 0)[0]
-        
-        for j in range(3):
-            if j == 0:
-                sub_indices = np.arange(indices.shape[0])
-            elif j == 1:
-                sub_indices = insitu
-            else:
-                sub_indices = medsitu
-            if sub_indices.shape[0] == 0:
-                continue
-        
-            star_mask = np.where(parent_indices[indices[sub_indices],1] == 1)[0]
-            gas_mask = np.where(parent_indices[indices[sub_indices],1] == 0)[0]
+    #first: only takegalaxies with flag=1
+    dwarf_inds = dwarf_ids[np.nonzero(funcs.isin(dwarf_ids, np.nonzero(subhaloFlag)[0]))[0]]
+    mw_inds = mw_ids[np.nonzero(funcs.isin(mw_ids, np.nonzero(subhaloFlag)[0]))[0]]
+    group_inds = group_ids[np.nonzero(funcs.isin(group_ids, np.nonzero(subhaloFlag)[0]))[0]]
+    cluster_inds = cluster_ids[np.nonzero(funcs.isin(cluster_ids, np.nonzero(subhaloFlag)[0]))[0]]
 
-            #number of parents in the MP
-            res[i,j,0] = np.where(isInMP[indices[sub_indices]] == 1)[0].shape[0]
-            
-            #number of star parents in the MP
-            res[i,j,1] = np.where(isInMP[indices[star_mask]] == 1)[0].shape[0]
-            
-            #number of gas parents in the MP
-            res[i,j,2] = np.where(isInMP[indices[gas_mask]] == 1)[0].shape[0]
+    #loop over halo mass bins
+    for h in range(5):
+        #all_good.dtype = int64
+        all_good = np.nonzero(subhaloFlag)[0]
+        halo_mass_bin = all_good if h == 0 else dwarf_inds if h == 1 else mw_inds if h == 2 else group_inds if h == 3 else cluster_inds
 
-            #number of parents in other galaxies
-            res[i,j,3] = np.where(location[indices[sub_indices]] != -1)[0].shape[0] - gal_res[i,j,0] 
-            
-            #number of parents in satellites of the MP
-            res[i,j,5] = np.where(isInMP_sat[indices[sub_indices]] == 1)[0].shape[0]
-            
-            #number of parents in satellites of other halos
-            res[i,j,4] = np.where(np.logical_and(np.logical_and(location[indices[sub_indices]] != -1,\
-                                                                    isInCentral[indices[sub_indices]] == 0),\
-                                                     isInMP[indices[sub_indices]] == 0))[0].shape[0] - gal_res[i,j,5]
+        # find all tracers in each halo mass bin
+        # halo bin inds points into the entire tracer array (parent_indices, location, etc.)
+        halo_bin_inds = iF.find_tracers_of_subs(halo_mass_bin, offsets)
 
-            #number of parents in other centrals (halos)
-            res[i,j,6] = np.where(np.logical_and(np.logical_and(location[indices[sub_indices]] != -1,\
-                                                                    isInCentral[indices[sub_indices]] == 1),\
-                                                     isInMP[indices[sub_indices]] == 0))[0].shape[0]
-
-            #total
-            res[i,j,7] = sub_indices.shape[0]
+        for i in range(5):
+            mass_bin = mass_bin1 if i==0 else mass_bin2 if i==1 else mass_bin3 if i==2 else mass_bin4 if i==3 else\
+            mass_bin5
             
-            #obtain mass fractions
-            res[i,j,:7] = res[i,j,:7] / res[i,j,7] if res[i,j,7] > 0 else res[i,j,:7]
+            indices = halo_bin_inds[np.nonzero(funcs.isin(location[halo_bin_inds],mass_bin))[0]]
+            
+            medsitu = np.where(situ_cat[indices] == 1)[0]
+            insitu = np.where(situ_cat[indices] == 0)[0]
+            
+            for j in range(3):
+                if j == 0:
+                    sub_indices = np.arange(indices.shape[0])
+                elif j == 1:
+                    sub_indices = insitu
+                else:
+                    sub_indices = medsitu
+                if sub_indices.shape[0] == 0:
+                    continue
+            
+                star_mask = np.where(parent_indices[indices[sub_indices],1] == 1)[0]
+                gas_mask = np.where(parent_indices[indices[sub_indices],1] == 0)[0]
+
+                #number of parents in the MP
+                res[h,i,j,0] = np.where(isInMP[indices[sub_indices]] == 1)[0].shape[0]
+                
+                #number of star parents in the MP
+                res[h,i,j,1] = np.where(isInMP[indices[star_mask]] == 1)[0].shape[0]
+                
+                #number of gas parents in the MP
+                res[h,i,j,2] = np.where(isInMP[indices[gas_mask]] == 1)[0].shape[0]
+
+                #number of parents in other galaxies
+                res[h,i,j,3] = np.where(location[indices[sub_indices]] != -1)[0].shape[0] - res[h,i,j,0] 
+                
+                #number of parents in satellites of the MP
+                res[h,i,j,5] = np.where(isInMP_sat[indices[sub_indices]] == 1)[0].shape[0]
+                
+                #number of parents in satellites of other halos
+                res[h,i,j,4] = np.where(np.logical_and(np.logical_and(location[indices[sub_indices]] != -1,\
+                                                                        isInCentral[indices[sub_indices]] == 0),\
+                                                        isInMP[indices[sub_indices]] == 0))[0].shape[0] - res[h,i,j,5]
+
+                #number of parents in other centrals (halos)
+                res[h,i,j,6] = np.where(np.logical_and(np.logical_and(location[indices[sub_indices]] != -1,\
+                                                                        isInCentral[indices[sub_indices]] == 1),\
+                                                        isInMP[indices[sub_indices]] == 0))[0].shape[0]
+
+                #total -> total in halo mass bin
+                res[h,i,j,7] = halo_mass_bin.shape[0]
+                
+                #obtain mass fractions
+                # res[h,i,j,:7] = res[h,i,j,:7] / res[h,i,j,7] if res[h,i,j,7] > 0 else res[h,i,j,:7]
     
     return res, gal_res
 
