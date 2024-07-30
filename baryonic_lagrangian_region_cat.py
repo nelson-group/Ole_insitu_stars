@@ -52,7 +52,7 @@ def lagrangian_region_convex_hull(coords, final_offsets, sub_ids, subhaloFlag):
     return volumes, radii
 
 
-@jit(nopython = True, parallel = True)
+# @jit(nopython = True)#, parallel = True)
 def distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, boxSize, target_snap, accretion_channels,\
               situ_cat, stype):
     """
@@ -64,6 +64,7 @@ def distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_
     
     sub_medians = np.zeros((num_subs,3,3), dtype = np.float32)
     sub_max = sub_medians.copy()
+    sub_99 = sub_medians.copy()
         
     for i in nb.prange(num_subs):
         
@@ -78,10 +79,24 @@ def distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_
 #         parent_indices_of_sub = parent_indices_data[indices_of_sub,:]
 
         part_pos_of_sub = part_pos[indices_of_sub,:]
+
+        # part_pos_of_sub[np.where(part_pos_of_sub > boxSize)] -= boxSize
+        # part_pos_of_sub[np.where(part_pos_of_sub < 0)] += boxSize
         
         subhalo_position = sub_pos_at_target_snap[sub_id,:] 
 
+        subhalo_position[np.where(subhalo_position > boxSize)[0]] -= boxSize
+        subhalo_position[np.where(subhalo_position < 0)[0]] += boxSize
+
+        # if np.where(subhalo_position > boxSize)[0].shape[0] > 0 or np.where(subhalo_position < 0)[0].shape[0] > 0:
+        #     print('subhalo position outside of box: ',subhalo_position)
+        #     print('subhalo id: ',sub_id)
+
         rad_dist = funcs.dist_vector_nb(subhalo_position,part_pos_of_sub,boxSize)
+
+        if np.where(rad_dist > boxSize*0.5*np.sqrt(3))[0].shape[0] > 0:
+            pass
+            # print(sub_id, end = ' ')
         
         if stype == 'insitu':
         
@@ -111,21 +126,26 @@ def distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_
 
                 sub_medians[i,j,0] = np.median(rad_dist[subset])
                 sub_max[i,j,0] = np.max(rad_dist[subset])
+                sub_99[i,j,0] = np.percentile(rad_dist[subset],99)
 
                 if subset_igm_mask.size > 0:
                     sub_medians[i,j,1] = np.median(rad_dist[subset_igm_mask])
                     sub_max[i,j,1] = np.max(rad_dist[subset_igm_mask])
+                    sub_99[i,j,1] = np.percentile(rad_dist[subset_igm_mask],99)
 
                 if subset_satellite_mask.size > 0:
                     sub_medians[i,j,2] = np.median(rad_dist[subset_satellite_mask])
                     sub_max[i,j,2] = np.max(rad_dist[subset_satellite_mask])
+                    sub_99[i,j,2] = np.percentile(rad_dist[subset_satellite_mask],99)
         else:
             sub_medians[i,0,0] = np.median(rad_dist)
             sub_max[i,0,0] = np.max(rad_dist)
+            sub_99[i,0,0] = np.percentile(rad_dist,99)
         
-    return sub_medians, sub_max
+    return sub_medians, sub_max, sub_99
 
 def lagrangian_region_cat(basePath, stype, start_snap, target_snap):
+    """Output is exclusively in code units."""
     start_loading = time.time()
     header = il.groupcat.loadHeader(basePath,target_snap)
     redshift = header['Redshift']
@@ -205,7 +225,7 @@ def lagrangian_region_cat(basePath, stype, start_snap, target_snap):
             f.close()
         else:
             insituStarsInSubOffset = tF.exsituStarsInSubOffset(basePath,start_snap)
-            situ_cat = None
+            situ_cat = np.array([0])
             
         final_offsets = tF.tracersInSubhalo(insituStarsInSubOffset,numTracersInParents).astype(int)
         final_offsets = np.insert(final_offsets,0,0)
@@ -241,8 +261,8 @@ def lagrangian_region_cat(basePath, stype, start_snap, target_snap):
         
         all_dm_pos = il.snapshot.loadSubset(basePath, target_snap, 'dm', fields = ['Coordinates'])
         
-        accretion_channels = None
-        situ_cat = None
+        accretion_channels = np.array([0])
+        situ_cat = np.array([0])
         part_pos = all_dm_pos[parent_indices_data]
     else:
         raise Exception('Invalid star/particle type!')
@@ -266,27 +286,44 @@ def lagrangian_region_cat(basePath, stype, start_snap, target_snap):
     print('# of galaxies with 0 tracers: ', np.nonzero(noGalaxy)[0].shape[0])
     del noGalaxy
     
+    # exclude galaxies with NaN positions
+    subhaloFlag[np.where(np.isnan(sub_pos_at_target_snap[:,0]))[0]] = 0
+    subhaloFlag[np.where(np.isnan(sub_pos_at_target_snap[:,1]))[0]] = 0
+    subhaloFlag[np.where(np.isnan(sub_pos_at_target_snap[:,2]))[0]] = 0
+
+
     #### ^ only exclude galxies without tracers and no extrapolated position history ^ ####
+
+    print('maximum of subhalo coordiantes: ',np.max(sub_pos_at_target_snap[np.nonzero(subhaloFlag)[0]]))
+    print('median of subhalo coordiantes: ',np.median(sub_pos_at_target_snap[np.nonzero(subhaloFlag)[0]]))
+    print('minimum of subhalo coordiantes: ',np.min(sub_pos_at_target_snap[np.nonzero(subhaloFlag)[0]]))
 
     end_loading = time.time()
     print('time for coordinate loading: ', end_loading - start_loading)
 
-    sub_medians, sub_max =\
+    sub_medians, sub_max, sub_99 =\
     distances(final_offsets, part_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, boxSize, target_snap, accretion_channels,\
           situ_cat, stype)
     
+    print('# galaxies total: ',np.nonzero(subhaloFlag)[0].shape[0])
+    print('# galaxies with med > boxSize: ',np.where(sub_medians[:,0,0] > boxSize)[0].shape)
+    print('# galaxies with max > boxSize: ',np.where(sub_max[:,0,0] > boxSize)[0].shape)
+
     if stype != 'insitu':
         sub_medians = sub_medians[:,0,0]
         sub_max = sub_max[:,0,0]
+        sub_99 = sub_99[:,0,0]
     
     end_distances = time.time()
     print('time for distances: ',end_distances - end_loading)
     
     volumes, radii = lagrangian_region_convex_hull(part_pos, final_offsets, sub_ids, subhaloFlag)
-        
+
+    print('# galaxies with rad > boxSize: ',np.where(radii > boxSize)[0].shape)
+
     end_hull = time.time()
     print('time for volumes: ',end_hull - end_distances)
-    return subhaloFlag, sub_ids_dwarfs, sub_ids_mw, sub_ids_groups, sub_ids_giants, sub_medians, sub_max, volumes, radii
+    return subhaloFlag, sub_ids_dwarfs, sub_ids_mw, sub_ids_groups, sub_ids_giants, sub_medians, sub_max, volumes, radii, sub_99
 
 
 #---- settings----#
@@ -301,17 +338,19 @@ start = time.time()
 
 assert isdir('/vera/ptmp/gc/olwitt/auxCats/' +basePath[32:39] )
 
-subhaloFlag, dwarf_inds, mw_inds, group_inds, giant_inds, sub_medians, sub_max, volumes, radii = lagrangian_region_cat(basePath, stype, start_snap, target_snap)
+subhaloFlag, dwarf_inds, mw_inds, group_inds, giant_inds, sub_medians, sub_max, volumes, radii, sub_99 = lagrangian_region_cat(basePath, stype, start_snap, target_snap)
 
 user = '/vera/ptmp/gc/olwitt'
 
 
-filename = user + '/auxCats/' + basePath[32:39] + f'/baryonic_lagrangian_regions_{stype}.hdf5'
+filename = user + '/auxCats/' + basePath[32:39] + f'/baryonic_lagrangian_regions_{stype}_test.hdf5'
 
+# assert False
 
 f = h5py.File(filename,'w')
 f.create_dataset('subhalo_median_distances', data = sub_medians)
 f.create_dataset('subhalo_maximum_distances', data = sub_max)
+f.create_dataset('subhalo_99_percentile_distances', data = sub_99)
 f.create_dataset('subhaloFlag', data = subhaloFlag)
 
 g1 = f.create_group('convex_hull')
