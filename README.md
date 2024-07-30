@@ -34,4 +34,4 @@ Our main findings are:
 
 - Classic in-situ stars form from gas accreted freshly from the IGM, from wind-recycled gas, from mergers, and stripped gas from infalling satellites and other halos in similar amounts. For smaller galaxies, accretion from the IGM makes up 60\% (fresh accretion and NEP wind recycling) whereas this fraction drops to 20\% for massive systems. Contrarily, gas accreted from stripping and mergers dominates in-situ star formation there ($\approx 60\%$) and is less important for dwarfs ($\approx 40\%$). We see similar results both for true in-situ and med-situ stars.
 
-![rad_prof_z_tracer_frac_sub0_TNG50-2](https://github.com/nelson-group/Ole_insitu_stars/assets/138294421/8abbbdc6-d9db-4ecc-85bd-9fa0e4ad244e)
+![infall_times](./pics/mean_infall_times/image_mean_infall_times_50-1.pdf)
