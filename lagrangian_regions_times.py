@@ -57,6 +57,12 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
         
         profiles_situ_hmr = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
         profiles_situ_r_vir = np.full((sub_ids.shape[0],3,num_bins), np.nan, dtype = np.float32)
+
+        # profiles_hmr = np.zeros((1,1,1), dtype = np.float32)
+        # profiles_r_vir = np.full((sub_ids.shape[0],num_bins), np.nan, dtype = np.float32)
+        
+        # profiles_situ_hmr = np.zeros((1,1,1), dtype = np.float32)
+        # profiles_situ_r_vir = np.zeros((1,1,1), dtype = np.float32)
     else:
         profiles_hmr = np.zeros((1,1,1), dtype = np.float32)
         profiles_r_vir = np.zeros((1,1,1), dtype = np.float32)
@@ -161,15 +167,18 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
                 
                 max_dist = num_hmr * shmr[i]
                 if subset.shape[0] > 0:
+                    # pass
                     profiles_situ_hmr[i,j,:] = distance_binning(rad_dist[subset],num_bins, max_dist)
-                if subset2.shape[0] > 0:    
+                if subset2.shape[0] > 0:
+                    # pass    
                     profiles_hmr[i,j,:] = distance_binning(rad_dist[subset2],num_bins, max_dist)
 
                 max_dist = num_r_vir * r_vir[i]
                 if subset.shape[0] > 0:
+                    # pass
                     profiles_situ_r_vir[i,j,:] = distance_binning(rad_dist[subset],num_bins, max_dist)
-                if subset2.shape[0] > 0:
-                    profiles_r_vir[i,j,:] = distance_binning(rad_dist[subset2],num_bins, max_dist)
+                if subset2.shape[0] > 0 and j == 0: #added second statement
+                    profiles_r_vir[i,:] = distance_binning(rad_dist[subset2],num_bins, max_dist) #change: middle index j deleted
         
         #Lagrangian region computations:
         for j in range(3):
@@ -315,6 +324,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     
     #load subhalo positions (99 instead of start_snap as they were computed for start_snap = 99)
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,99-target_snap,:]
+    
     sub_positions.close()
     
     if stype.lower() in ['insitu', 'exsitu']:
@@ -519,8 +529,9 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         #convert to cumulative profiles if requested
         if cumulative and return_profiles:
             profiles_hmr = np.cumsum(profiles_hmr, axis = 2)
-            profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2)
+            profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2) ### change to axis = 1 for reduced memory usage
             if stype == 'insitu':
+                pass
                 profiles_situ_hmr = np.cumsum(profiles_situ_hmr, axis = 2)
                 profiles_situ_r_vir = np.cumsum(profiles_situ_r_vir, axis = 2)
         
@@ -556,14 +567,14 @@ target_snap = int(sys.argv[3])
 basePath='/virgotng/universe/IllustrisTNG/TNG50-' + str(run) + '/output'
 start_snap = 99
 use_sfr_gas_hmr = True
-return_profiles = False
-cumulative = False
+return_profiles = True
+cumulative = True
 
 shmr_cut = 2
 r_vir_cut = 1
 
-numBins = 101
-num_r_vir = 15
+numBins = 101 #201 for radial profile evolution, 101 for radial profiles
+num_r_vir = 15 #1.5 for radial profile evolution, 15 for radial profiles
 num_hmr = int(num_r_vir * 40 / 3) #200shmr or 15 r_vir are good numbers
 dist_bins_hmr = np.linspace(0,num_hmr,numBins)
 dist_bins_r_vir = np.linspace(0,num_r_vir,numBins)
@@ -582,7 +593,7 @@ user = '/vera/ptmp/gc/olwitt'
 filename = user + '/' + stype + '/' + basePath[32:39] + '/lagrangian_regions/lagrangian_regions_'
 
 if return_profiles:
-    filename = filename + f'w_profiles_{target_snap}_test.hdf5'
+    filename = filename + f'w_profiles_{target_snap}_cumulative.hdf5'
 else:
     filename = filename + f'{target_snap}.hdf5'
 
