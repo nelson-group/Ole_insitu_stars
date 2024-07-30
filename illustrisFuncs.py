@@ -85,6 +85,8 @@ def compute_ages(subIDs, starsInSubOffset, numStarsInSubs, insitu, onlyInsitu, s
         
         if onlyInsitu:
             star_indices = star_indices[np.nonzero(insitu[star_indices])]
+            if star_indices.size < 1: #galaxies with zero insitu stars don't have an age
+                continue
     
         galaxy_form_a = np.nanmedian(star_formation_time[star_indices])
         galaxy_form_z[i] = 1/galaxy_form_a - 1
@@ -164,4 +166,18 @@ def snap_to_z(z_arr, snap):
         upper = lower + 1
 
         res[i] = z_arr[lower] + (z_arr[upper] - z_arr[lower]) * (snap[i] - lower)
+    return res
+
+@jit(nopython = True)
+def find_tracers_of_subs(subs, offsets):
+    """Given an array of subhalo ids, computes an array of indices based on the values of offsets."""
+    res = np.zeros(offsets[-1], dtype = np.int64)
+
+    counter = 0
+    for i in range(subs.shape[0]):
+        inds = np.arange(offsets[subs[i]], offsets[subs[i] + 1])
+        res[counter:counter + inds.shape[0]] = inds
+        counter += inds.shape[0]
+
+    res = res[:counter]
     return res
