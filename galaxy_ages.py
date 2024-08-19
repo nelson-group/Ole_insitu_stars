@@ -1,19 +1,16 @@
-import time
 import illustris_python as il
 import numpy as np
 import h5py
-import numba as nb
-from numba import jit, njit
-import tracerFuncs as tF
-import locatingFuncs as lF
 import illustrisFuncs as iF
-import funcs
 from os.path import isfile
 import sys
 
 run = int(sys.argv[1])
 snap = int(sys.argv[2])
+# specify, if you want to only consider central galaxies (1 = True, 0 = False)
 onlyCentrals = int(sys.argv[3]) == 1
+
+# specify, if you want to only consider in-situ stars (1 = True, 0 = False)
 onlyInsitu = int(sys.argv[4]) == 1
 
 print(onlyCentrals, onlyInsitu)
