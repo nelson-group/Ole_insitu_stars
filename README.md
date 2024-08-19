@@ -35,3 +35,62 @@ Our main findings are:
 - Classic in-situ stars form from gas accreted freshly from the IGM, from wind-recycled gas, from mergers, and stripped gas from infalling satellites and other halos in similar amounts. For smaller galaxies, accretion from the IGM makes up 60\% (fresh accretion and NEP wind recycling) whereas this fraction drops to 20\% for massive systems. Contrarily, gas accreted from stripping and mergers dominates in-situ star formation there ($\approx 60\%$) and is less important for dwarfs ($\approx 40\%$). We see similar results both for true in-situ and med-situ stars.
 
 ![infall times](./pics/mean_infall_times/image_mean_infall_times_50-1.pdf)
+
+## How to work with the data
+
+Many computations need others as a basis. Here is a guide on the correct order to execute the functions in order to reproduce the results stated above.
+
+1. Execute the trace back algorithm.
+- Run [parent_index_table.py](./parent_index_table.py) for all snapshots and TNG50 runs you want to do computations on. Modify the filenames for other simulations available on VERA. It takes up quite some storage (~1.5 TB for 8.5*10^8 in-situ star particles). (For comparison reasons, run the same also for ex-situ stars.) 
+
+- If you want to compare to DM (within 2*R_0.5,star), also run [dm_index_table.py](./dm_index_table.py) for all TNG50 runs.
+
+2. Execute algorithms for basic auxilliary catalogs and files.
+
+- Run [create_position_histories.py](./create_position_histories.py) for all TNG50 runs to obtain inter- and extrapolated subhalo positions at all snapshots.
+
+- Run [create_subhalo_sample.py](./create_subhalo_sample.py) to receive a subhaloFlag - array, that is generally used in all computations, funtions, and snapshots.
+
+- Run [sfr_gas_hmr.py](./sfr_gas_hmr.py) for all snapshots and TNG50 runs to use the starforming gas halfmass radius rather than the stellar halfmass radius,
+
+- Run [star_formation_snapshots.py](./star_formation_snapshots.py) to obtain for each tracer the first snapshot in which it is located in a star particle.
+
+- Run [subhalo_index_table.py](./subhalo_index_table.py) for every TNG50 run. You receive information on the subhalo in which each tracer is located at every snapshot. Execute [dm_subhalo_index_table.py](./dm_subhalo_index_table.py) to do the same for the DM particles mentioned earlier. This is also quite expensive in storage (~0.5 TB for 8.5*10^8 in-situ star particles)
+
+- Run [galaxy_ages.py](./galaxy_ages.py) and [halo_form_snap.py](./halo_form_snap.py)
+
+3. Execute advanced algorithms based on step 2., but still auxilliary.
+
+- Run [distance_cats.py](./distance_cats.py) for all snapshots. Given a subhalo sample, it calculates whether each tracer of the sample is within certain distance cuts.
+
+- Run [star_formation_distances.py](./star_formation_distances.py). Computes the distance to the subhalo center in units of either R_0.5,star or R_SF,1/2 given the star formation snapshot of each tracer.
+
+4. Execute higher level code, needs step 3.
+
+- Run [StellarAssembly_cat.py](./StellarAssembly_cat.py) to obtain a catalog for (every!) star in the simulation, stating whether it's ex-situ, in-situ, or med-situ. (under construction)
+
+- Run [insitu_cat.py](./insitu_cat.py) Same as [insitu_cat.py](./insitu_cat.py) but only stating for all in-situ stars, whether they are in-situ or med-situ. (under construction)
+
+----- everything below is currently being updated -----
+
+5. Execute higher level code, needs step 4.
+
+- Run [bin_parents.py](./bin_parents.py) to obtain information on accretion modes and galaxy composition.
+
+6. Execute the higher level code, needs step 5.
+
+- Run [lagrangian_regions_times.py](./lagrangian_regions_times.py)
+
+7. Execute the higher level code, needs step 6.
+
+- Run [infall_and_leaving_times.py](./infall_and_leaving_times.py) to receive the snapshots when tracers entered the galaxy (halo). Could be modified to work after step 3 (using [distance_cats.py](./distance_cats.py)).
+
+8. Execute the higher level code, needs step 7.
+
+- Run [mean_infall_time.py](./mean_infall_time.py) to obtain galaxy radial profiles of the mean tracer infall into the halo. Could be modified to work after step 4 (using modified [infall_and_leaving_times.py](./infall_and_leaving_times.py)).
+
+Now you should have all catalogs to proceed with creating the plots. Use the following files:
+
+- [plot_in_ex_frac_mass_trend](./plot_in_ex_frac_mass_trend.py) for recreating Figure 1 (left). (Needs steps: - )
+
+(under construction)
