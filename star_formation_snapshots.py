@@ -1,6 +1,8 @@
 import numpy as np
 import h5py
 import sys
+from os.path import isfile, isdir
+from os import mkdir
 
 def find_star_formation_snap(run, stype, start_snap, num_tracers):
     """Computes snapshot of star formation for every tracer based on the parent index tables."""
@@ -28,6 +30,7 @@ run = int(sys.argv[1])
 stype = str(sys.argv[2])
 start_snap = 99
 
+assert isfile(f'/vera/ptmp/gc/olwitt/{stype}/TNG50-{run}/parent_indices_{start_snap}.hdf5'), 'File does not exist!'
 file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/parent_indices_{start_snap}.hdf5'
 f = h5py.File(file,'r')
 #only load information of state of tracer parent (gas/star)
@@ -38,6 +41,7 @@ f.close()
 
 star_formation_snaps = find_star_formation_snap(run, stype, start_snap, num_tracers)
 
+# specify path to your directory
 file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/star_formation_snapshots.hdf5'
 f = h5py.File(file,'w')
 f.create_dataset('star_formation_snapshot', data = star_formation_snaps)
