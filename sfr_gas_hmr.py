@@ -98,7 +98,14 @@ def SubhaloHalfmassRadGasSfr(basePath, snap, frac, use_percentile):
 
 run = int(sys.argv[1])
 target_snap = int(sys.argv[2])
+
+# frac = 0.5 for half-mass radius
 frac = float(sys.argv[3])
+
+# use_percentile = True for using the percentile instead of the half-mass radius
+# e.g. the median of all gas cell distances instead of the distance of the gas cell defined
+# b the radius enclosing half of the total mass of all star-forming gas cells
+# type 1 for True, 0 for False
 use_percentile = (int(sys.argv[4]) == 1)
 basePath = f'/virgotng/universe/IllustrisTNG/TNG50-{run}/output'
 SubhaloHalfmassRadGasSfr(basePath, target_snap, frac, use_percentile)
