@@ -1,8 +1,6 @@
 import illustris_python as il
 import numpy as np
 import h5py
-import numba as nb
-from numba import jit, njit
 import tracerFuncs as tF
 import funcs
 import sys
@@ -25,6 +23,8 @@ def TraceBackAllInsituStars(basePath,start_snap, target_snap):
     
     sim = basePath[32:39]
     
+
+    #specify path to save results
     result = h5py.File('/vera/ptmp/gc/olwitt/insitu/' + sim + f'/parent_indices_{target_snap}.hdf5','a') 
     
     print('initial loading complete',flush=True)
@@ -34,10 +34,8 @@ def TraceBackAllInsituStars(basePath,start_snap, target_snap):
     #save results in hdf5 file
 
     grp = result.create_group(f'snap_{target_snap}')
-    dset = grp.create_dataset("parent_indices", parent_indices.shape, dtype=float)
-    dset[:] = parent_indices
-    dset2 = grp.create_dataset('numTracersInParents',numTracersInParents.shape, dtype=float)
-    dset2[:] = numTracersInParents
+    grp.create_dataset("parent_indices", data=parent_indices)
+    grp.create_dataset('numTracersInParents',data=numTracersInParents)
     print(target_snap, 'done',end = '; ', flush=True)
     result.close()
     return
@@ -55,6 +53,7 @@ def TraceBackAllExsituStars(basePath,start_snap, target_snap):
     
     sim = basePath[32:39]
     
+    #specify path to save results
     result = h5py.File('/vera/ptmp/gc/olwitt/exsitu/' + sim + f'/parent_indices_{target_snap}.hdf5','a') 
     
     print('initial loading complete',flush=True)
@@ -64,10 +63,8 @@ def TraceBackAllExsituStars(basePath,start_snap, target_snap):
     #save results in hdf5 file
 
     grp = result.create_group(f'snap_{target_snap}')
-    dset = grp.create_dataset("parent_indices", parent_indices.shape, dtype=float)
-    dset[:] = parent_indices
-    dset2 = grp.create_dataset('numTracersInParents',numTracersInParents.shape, dtype=float)
-    dset2[:] = numTracersInParents
+    grp.create_dataset("parent_indices", data = parent_indices)
+    grp.create_dataset('numTracersInParents', data = numTracersInParents)
     print(target_snap, 'done',end = '; ', flush=True)
     result.close()
     return
@@ -78,4 +75,4 @@ if stype == 'insitu':
 elif stype == 'exsitu':
     TraceBackAllExsituStars(basePath, 99, target_snap)
 else:
-    raise ValueError('Specify valid star type! (insitu or exsitu)')
+    raise Exception('Specify valid star type! (insitu or exsitu)')
