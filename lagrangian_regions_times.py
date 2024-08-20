@@ -8,7 +8,6 @@ import tracerFuncs as tF
 import funcs
 from os.path import isfile, isdir
 import sys
-import psutil
 
 sys.path.append('/vera/u/olwitt/illustris_python/illustris_python')
 from loadMPBs import loadMPBs
@@ -28,18 +27,6 @@ def distance_binning(distance, numBins, max_dist):
             yMed[j] = relInd.shape[0] / distance.shape[0]
             
     return yMed
-
-@jit(nopython = True, parallel = True)
-def isSubGalaxy(sub_ids, final_offsets):
-    """ Checks the number of tracers in each galaxy and marks the ones with 0 tracers."""
-    
-    noGalaxy = np.ones(sub_ids.shape[0], dtype = np.ubyte)
-    for i in nb.prange(sub_ids.shape[0]):
-        sub_id = sub_ids[i]
-        if final_offsets[sub_id + 1] - final_offsets[sub_id] == 0:
-            continue
-        noGalaxy[i] = 0
-    return noGalaxy
 
 @jit(nopython = True)#, parallel = True)
 def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids,\
@@ -70,13 +57,6 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
         profiles_situ_hmr = np.zeros((1,1,1), dtype = np.float32)
         profiles_situ_r_vir = np.zeros((1,1,1), dtype = np.float32)
     
-    #all tracers from galaxies that are no longer centrals are marked as -1
-    #all tracers outside of galaxies (which are still centals) are marked as 0
-    #all tracers inside of galaxies (which are still centals) are marked as 1
-    
-    inside_2shmr = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
-    inside_r_vir = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
-    
     num_new_stars = np.where(star_formation_snaps == target_snap)[0].shape[0]
     dist_at_star_form = np.full(num_new_stars, -1, dtype = np.float32)
     
@@ -92,7 +72,6 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
     star_form_offsets = np.cumsum(star_form_offsets)
     #numba compatible insert function:
     star_form_offsets = funcs.insert(star_form_offsets, 0, 0)
-#     star_form_offsets = np.insert(star_form_offsets, 0, 0)
 
     # the following assertion is not fulfilled as we are only considering centrals.
     # star_formation_snaps includes tracers of every subhalo
@@ -123,18 +102,6 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
         subhalo_position = sub_pos_at_target_snap[sub_id,:] 
 
         rad_dist = funcs.dist_vector_nb(subhalo_position,particle_pos,boxSize)
-        
-        #radius crossings:
-        
-        in_gal = np.where(rad_dist < shmr_cut * shmr[i])[0]
-        not_in_gal = np.where(rad_dist >= shmr_cut * shmr[i])[0]
-        inside_2shmr[indices_of_sub[in_gal]] = 1
-        inside_2shmr[indices_of_sub[not_in_gal]] = 0
-        
-        in_halo = np.where(rad_dist < r_vir_cut * r_vir[i])[0]
-        not_in_halo = np.where(rad_dist >= r_vir_cut * r_vir[i])[0]
-        inside_r_vir[indices_of_sub[in_halo]] = 1
-        inside_r_vir[indices_of_sub[not_in_halo]] = 0
         
         #radius at star formation (normalized by shmr):
         
@@ -177,8 +144,8 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
                 if subset.shape[0] > 0:
                     # pass
                     profiles_situ_r_vir[i,j,:] = distance_binning(rad_dist[subset],num_bins, max_dist)
-                if subset2.shape[0] > 0 and j == 0: #added second statement
-                    profiles_r_vir[i,:] = distance_binning(rad_dist[subset2],num_bins, max_dist) #change: middle index j deleted
+                if subset2.shape[0] > 0: # and j == 0: #add second statement for memory reduction
+                    profiles_r_vir[i,j,:] = distance_binning(rad_dist[subset2],num_bins, max_dist) #delete middle index j for memory reduction
         
         #Lagrangian region computations:
         for j in range(3):
@@ -208,7 +175,7 @@ def distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub
                 sub_medians[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / shmr[i]
                 sub_medians_r_vir[i,j,2] = np.median(rad_dist[subset_satellite_mask]) / r_vir[i]
         
-    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, dist_at_star_form, profiles_hmr, profiles_r_vir,\
+    return sub_medians, sub_medians_r_vir, dist_at_star_form, profiles_hmr, profiles_r_vir,\
           profiles_situ_hmr, profiles_situ_r_vir
 
 @jit(nopython = True, parallel = True)
@@ -219,9 +186,6 @@ def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_targ
     
     sub_medians = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
     sub_medians_r_vir = np.full(sub_ids.shape[0], np.nan, dtype = np.float32)
-    
-    inside_2shmr = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
-    inside_r_vir = np.full(parent_indices_data.shape[0], -1, dtype = np.byte)
         
     if return_profiles:
         profiles_hmr = np.full((sub_ids.shape[0],num_bins), np.nan, dtype = np.float32)
@@ -245,18 +209,6 @@ def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_targ
 
         rad_dist = funcs.dist_vector_nb(subhalo_position,particle_pos,boxSize)
         
-        #radius crossings:
-        
-        in_gal = np.where(rad_dist < shmr_cut * shmr[i])[0]
-        not_in_gal = np.where(rad_dist >= shmr_cut * shmr[i])[0]
-        inside_2shmr[indices_of_sub[in_gal]] = 1
-        inside_2shmr[indices_of_sub[not_in_gal]] = 0
-        
-        in_halo = np.where(rad_dist < r_vir_cut * r_vir[i])[0]
-        not_in_halo = np.where(rad_dist >= r_vir_cut * r_vir[i])[0]
-        inside_r_vir[indices_of_sub[in_halo]] = 1
-        inside_r_vir[indices_of_sub[not_in_halo]] = 0
-        
         #radial profiles:
         
         if return_profiles:
@@ -274,10 +226,10 @@ def distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_targ
         if rad_dist.size > 0:
             sub_medians_r_vir[i] = np.median(rad_dist) / r_vir[i]
     
-    return sub_medians, sub_medians_r_vir, inside_2shmr, inside_r_vir, profiles_hmr, profiles_r_vir
+    return sub_medians, sub_medians_r_vir, profiles_hmr, profiles_r_vir
 
 def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_cut, use_sfr_gas_hmr = False,\
-                      return_profiles = False, num_hmr = None, num_r_vir = None, numBins = None, cumulative = True):
+                      return_profiles = False, num_hmr = None, num_r_vir = None, numBins = None, cumulative = True, single = False, single_id = None):
     start_loading = time.time()
     header = il.groupcat.loadHeader(basePath,target_snap)
     h_const = header['HubbleParam']
@@ -302,26 +254,22 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     sub_ids_giants = groups['GroupFirstSub'][giant_ids]
     central_ids = groups['GroupFirstSub'][:]
     
-#     dwarf_inds = tF.getIndices(sub_ids_dwarfs, all_central_ids)
-#     mw_inds = tF.getIndices(sub_ids_mw, all_central_ids)
-#     group_inds = tF.getIndices(sub_ids_groups, all_central_ids)
-#     giant_inds = tF.getIndices(sub_ids_giants, all_central_ids)
-    
     del groups, group_masses, dwarf_ids, mw_ids, group_ids, giant_ids
 
     sub_ids = np.arange(num_subs)
 
-    #Filter out halos without any subhalo and satellites
-    subhaloFlag = np.zeros(num_subs, dtype = np.ubyte)
-    subhaloFlag[central_ids[np.where(central_ids != -1)]] = 1
+    # load subhalo sample
+    sample_file = '/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + '/subhaloFlag_' + stype + '.hdf5'
+    assert isfile(sample_file), 'Sample file does not exist!'
+    f = h5py.File(sample_file,'r')
+    subhaloFlag = f['subhaloFlag'][:]
+    f.close()
     
     #load MPB trees
     trees = loadMPBs(basePath, start_snap, ids = sub_ids, fields = ['SubfindID'])
     
     #load data from files ---------------------------------------------------------------------------------
     sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5','r') 
-    is_extrapolated = sub_positions['is_extrapolated'][:]
-    
     #load subhalo positions (99 instead of start_snap as they were computed for start_snap = 99)
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,99-target_snap,:]
     
@@ -353,6 +301,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         del insituStarsInSubOffset, numTracersInParents
         
         #load accretion channels for tracers
+        assert isfile('/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + f'/tracer_accretion_channels_{start_snap}.hdf5'), 'Tracer accretion channel file does not exist!'
         file = '/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + f'/tracer_accretion_channels_{start_snap}.hdf5'
         f = h5py.File(file,'r')
         accretion_channels = f['tracer_accretion_channels'][:]
@@ -376,45 +325,11 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         raise Exception('Invalid star/particle type!')
     # ^ offsets for the parent index table, that's why at snapshot 99
     
-    
-    
-    #which galaxies? ----------------------------------------------------------------------------------------
-    not_extrapolated = np.nonzero(np.logical_not(is_extrapolated))[0]
-    subhaloFlag[not_extrapolated] = 0
-    
-    del is_extrapolated, not_extrapolated
-    #test, which galaxies have zero tracers of insitu stars
-    # (this already excludes all galaxies without any stars, since they can't have insitu stars)    
-    noGalaxy = isSubGalaxy(sub_ids, final_offsets)
-    
-    #only use galaxies that have at least one tracer particle (at z=0) AND have an extrapolated SubhaloPos entry
-    #all galaxies without extrapolated sub_pos history or only 1 tracer: -1
-    subhaloFlag[np.nonzero(noGalaxy)[0]] = 0
-    print('# of galaxies with 0 tracers: ', np.nonzero(noGalaxy)[0].shape[0])
-    del noGalaxy
-    
     #now aquire the correct virial radii (consider only those galaxies that are still centrals):
-    #-2 bc. GroupFirstSub could contain -1's
+    #-2 bc. GroupFirstSub contains -1's -> matching with np.intersect1d yields no results
     shmr = np.zeros(num_subs, dtype = np.float32)
     target_sub_ids = np.full(num_subs, -2, dtype = np.int32)
     r_vir = np.zeros(num_subs, dtype = np.float32)
-    
-    #tree check: find missing trees:
-    missing = []
-    counter = 0
-    tree_check = list(trees)
-    for i in range(num_subs):
-        if i != tree_check[counter]:
-            missing.append(i)
-            i += 1
-            continue
-        counter += 1
-        
-    for i in range(sub_ids.shape[0]):
-        if sub_ids[i] in missing or sub_ids[i] >= num_subs:
-            subhaloFlag[i] = 0
-            
-    #<until here, subhaloFlag is identical for every snapshot>
     
     #only load subfindIDs of subhalos with Flag=1
     for i in range(sub_ids.shape[0]):
@@ -460,18 +375,17 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         # galaxies without starforming gas cells
         no_sfr = np.where(sfr_gas_hmr_subhaloFlag[central_sub_ids_at_target_snap] == 0)[0]
         shmr[TSID_inds[sfr]] = sfr_gas_hmr_cat[sfr]
-        # special treatment for galaxies without starforming gas cells: use 4 times the stellar halfmass radius
+        # special treatment for galaxies without starforming gas cells: use 2 times the stellar halfmass radius
         # to still include them in the analysis -> be careful as strange behaviour for these galaxies might occur
         shmr[TSID_inds[no_sfr]] = shmr_cat[no_sfr] * 2
-    
-    #only keep subhalos that are still centrals 
-    # -> basically every central at z=0 is also a central at earlier times (until the formation
-    #snapshot)
 
     print('number of galaxies: ', np.where(subhaloFlag == 1)[0].shape[0])
     print('number of centrals: ', TSID_inds.shape[0])
     print('number of galaxies without starforming gas cells: ', no_sfr.shape[0])
 
+    # only keep subhalos that are still centrals 
+    # -> basically every central at z=0 is also a central at earlier times (until the formation
+    # snapshot)
     mask = np.full(sub_ids.shape[0], True)
     mask[TSID_inds] = False
     subhaloFlag[mask] = 0 
@@ -497,12 +411,14 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
     # get star formation snapshot for all tracers
 
     if stype in ['insitu', 'exsitu']:
+        assert isfile('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5'), 'Star formation snapshot file does not exist!'
         f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
         star_formation_snaps = f['star_formation_snapshot'][:]
         f.close()
         
         if stype == 'insitu':
             file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/insitu_or_medsitu_{start_snap}.hdf5'
+            assert isfile(file), 'Stellar assembly file does not exist!'
             f = h5py.File(file,'r')
             #0: insitu, 1: medsitu
             situ_cat = f['stellar_assembly'][:]
@@ -520,7 +436,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         start = time.time()
         print('time for coordinate loading: ',start-mid)
             
-        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, star_formation_dist, profiles_hmr, profiles_r_vir, profiles_situ_hmr,\
+        sub_medians, sub_medians_r_vir, star_formation_dist, profiles_hmr, profiles_r_vir, profiles_situ_hmr,\
         profiles_situ_r_vir =\
         distances(parent_indices_data, final_offsets, all_gas_pos, all_star_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir,\
                   boxSize, star_formation_snaps, target_snap, shmr_cut, r_vir_cut, accretion_channels, situ_cat, return_profiles, num_hmr,\
@@ -531,9 +447,17 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
             profiles_hmr = np.cumsum(profiles_hmr, axis = 2)
             profiles_r_vir = np.cumsum(profiles_r_vir, axis = 2) ### change to axis = 1 for reduced memory usage
             if stype == 'insitu':
-                pass
+                # pass
                 profiles_situ_hmr = np.cumsum(profiles_situ_hmr, axis = 2)
                 profiles_situ_r_vir = np.cumsum(profiles_situ_r_vir, axis = 2)
+
+        # usefull for memory reduction, save only a single profile
+        if single and stype == 'insitu':
+            profiles_hmr = profiles_hmr[single_id, :, :]
+            profiles_r_vir = profiles_r_vir[single_id, :, :]
+            profiles_situ_hmr = profiles_situ_hmr[single_id, :, :]
+            profiles_situ_r_vir = profiles_situ_r_vir[single_id, :, :]
+
         
     else:
         all_dm_pos = il.snapshot.loadSubset(basePath, target_snap, 'dm', fields = ['Coordinates'])
@@ -541,7 +465,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
         start = time.time()
         print('time for coordinate loading: ',start-mid)
         
-        sub_medians, sub_medians_r_vir, inside_galaxy, inside_halo, profiles_hmr, profiles_r_vir =\
+        sub_medians, sub_medians_r_vir, profiles_hmr, profiles_r_vir =\
         distances_dm(parent_indices_data, final_offsets, all_dm_pos, sub_pos_at_target_snap, subhaloFlag, sub_ids, shmr, r_vir, boxSize,\
                      target_snap, shmr_cut, r_vir_cut, return_profiles, num_hmr, num_r_vir, numBins)
         
@@ -557,7 +481,7 @@ def lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_
 
     end = time.time()
     print('actual time for profiles: ',end-start)
-    return sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, sub_ids_dwarfs, sub_ids_mw,\
+    return sub_medians, sub_medians_r_vir, subhaloFlag, star_formation_dist, sub_ids_dwarfs, sub_ids_mw,\
 sub_ids_groups, sub_ids_giants, profiles_hmr, profiles_r_vir, profiles_situ_hmr, profiles_situ_r_vir
 
 #---- settings----#
@@ -566,34 +490,47 @@ stype = str(sys.argv[2])
 target_snap = int(sys.argv[3])
 basePath='/virgotng/universe/IllustrisTNG/TNG50-' + str(run) + '/output'
 start_snap = 99
+
+# set True if you want to use the starforming gas halfmass radius instead of the stellar halfmass radius
 use_sfr_gas_hmr = True
-return_profiles = True
-cumulative = True
 
+# set True if you want to return the radial profiles and not just the galaxy median distances (Lagrangian halfmass radii)
+return_profiles = False
+
+# set True if you want to compute the cumulative sum of the profiles
+cumulative = False
+
+# set True if you want to compute the profiles only for a single galaxy
+single = False
+
+# set the extent of the galaxy in units of the stellar halfmass radius/ starforming gas halfmass radius
 shmr_cut = 2
-r_vir_cut = 1
 
-numBins = 101 #201 for radial profile evolution, 101 for radial profiles
-num_r_vir = 15 #1.5 for radial profile evolution, 15 for radial profiles
-num_hmr = int(num_r_vir * 40 / 3) #200shmr or 15 r_vir are good numbers
+# set the extent of the halo in units of the virial radius
+r_vir_cut = 1
+single_id = 167392 #167392: group for TNG50-1
+
+numBins = 201 #201 for radial profile evolution, 101 for radial profiles
+num_r_vir = 1.5 #1.5 for radial profile evolution, 15 for radial profiles
+num_hmr = int(num_r_vir * 40 / 3)
 dist_bins_hmr = np.linspace(0,num_hmr,numBins)
 dist_bins_r_vir = np.linspace(0,num_r_vir,numBins)
 start = time.time()
 
 assert isdir('/vera/ptmp/gc/olwitt/' + stype + '/' +basePath[32:39] + '/lagrangian_regions')
 
-sub_medians, sub_medians_r_vir, subhaloFlag, inside_galaxy, inside_halo, star_formation_dist, dwarf_inds, mw_inds, group_inds,\
+sub_medians, sub_medians_r_vir, subhaloFlag, star_formation_dist, dwarf_inds, mw_inds, group_inds,\
 giant_inds, cum_rad_prof_hmr, cum_rad_prof_r_vir, profiles_situ_hmr, profiles_situ_r_vir =\
 lagrangian_region(basePath, stype, start_snap, target_snap, shmr_cut, r_vir_cut, use_sfr_gas_hmr, return_profiles, num_hmr, num_r_vir,\
-                  numBins, cumulative)
+                  numBins, cumulative, single, single_id)
 
-user = '/vera/ptmp/gc/olwitt'
-
-
-filename = user + '/' + stype + '/' + basePath[32:39] + '/lagrangian_regions/lagrangian_regions_'
+filename = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/lagrangian_regions/lagrangian_regions_'
 
 if return_profiles:
-    filename = filename + f'w_profiles_{target_snap}_cumulative.hdf5'
+    if not single:
+        filename = filename + f'w_profiles_{target_snap}.hdf5'
+    else:
+        filename = filename + f'w_profiles_{target_snap}_single.hdf5'
 else:
     filename = filename + f'{target_snap}.hdf5'
 
@@ -618,8 +555,6 @@ if return_profiles:
             f.create_dataset('radial_profiles_situ_r_vir', data = profiles_situ_r_vir)
 
 f.create_dataset('subhaloFlag', data = subhaloFlag)
-f.create_dataset('tracers_inside_galaxy', data = inside_galaxy)
-f.create_dataset('tracers_inside_halo', data = inside_halo)
 
 if stype.lower() not in ['dm', 'darkmatter', 'dark_matter', 'dark matter']:
     f.create_dataset('distance_at_star_formation', data = star_formation_dist)
