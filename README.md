@@ -63,34 +63,36 @@ Many computations need others as a basis. Here is a guide on the correct order t
 
 - Run [distance_cats.py](./distance_cats.py) for all snapshots. Given a subhalo sample, it calculates whether each tracer of the sample is within certain distance cuts.
 
-- Run [star_formation_distances.py](./star_formation_distances.py). Computes the distance to the subhalo center in units of either R_0.5,star or R_SF,1/2 given the star formation snapshot of each tracer.
-
 4. Execute higher level code, needs step 3.
 
-- Run [StellarAssembly_cat.py](./StellarAssembly_cat.py) to obtain a catalog for (every!) star in the simulation, stating whether it's ex-situ, in-situ, or med-situ. (under construction)
-
-- Run [insitu_cat.py](./insitu_cat.py) Same as [insitu_cat.py](./insitu_cat.py) but only stating for all in-situ stars, whether they are in-situ or med-situ. (under construction)
-
------ everything below is currently being updated -----
+- Run [star_formation_distances.py](./star_formation_distances.py). Computes the distance to the subhalo center in units of either R_0.5,star or R_SF,1/2 given the star formation snapshot of each tracer.
 
 5. Execute higher level code, needs step 4.
 
+- Run [StellarAssembly_cat.py](./StellarAssembly_cat.py) to obtain a catalog for (every!) star in the simulation, stating whether it's ex-situ, in-situ, or med-situ. (under construction -> bug detected but not resolved)
+
+- Run [insitu_cat.py](./insitu_cat.py) Same as [insitu_cat.py](./insitu_cat.py) but only stating for all in-situ stars, whether they are in-situ or med-situ.
+
+- Run [infall_and_leaving_times.py](./infall_and_leaving_times.py) to receive the snapshots when tracers entered the galaxy (halo) for the first/last time and left the IGM for the first time.
+
+6. Execute higher level code, needs step 5.
+
 - Run [bin_parents.py](./bin_parents.py) to obtain information on accretion modes and galaxy composition.
 
-6. Execute the higher level code, needs step 5.
+- Run [mean_infall_time.py](./mean_infall_time.py) to obtain galaxy radial profiles of the mean tracer infall into the halo as well as individual tracer positions and halo infall times for specific subhalos.
+
+7. Execute higher level code, needs step 6.
 
 - Run [lagrangian_regions_times.py](./lagrangian_regions_times.py)
 
-7. Execute the higher level code, needs step 6.
+Now you should have all catalogs to proceed with creating the plots (here the files are displayed in the order of the plots in the paper). Use the following files:
 
-- Run [infall_and_leaving_times.py](./infall_and_leaving_times.py) to receive the snapshots when tracers entered the galaxy (halo). Could be modified to work after step 3 (using [distance_cats.py](./distance_cats.py)).
+- [plot_in_ex_frac_mass_trend](./plotting_scripts/plot_in_ex_frac_mass_trend.py) for recreating Figure 1 (left). (Needs step: - )
 
-8. Execute the higher level code, needs step 7.
+- [plot_MP_frac_evolution.py](./plotting_scripts/plot_MP_frac_evolution.py) for recreating Figure 1 (right). (Needs step: 6 )
 
-- Run [mean_infall_time.py](./mean_infall_time.py) to obtain galaxy radial profiles of the mean tracer infall into the halo. Could be modified to work after step 4 (using modified [infall_and_leaving_times.py](./infall_and_leaving_times.py)).
+- [plot_insitu_frac_profiles](./plotting_scripts/plot_insitu_frac_profiles.py) for recreating Figure 2 (left). (Needs step: -)
 
-Now you should have all catalogs to proceed with creating the plots. Use the following files:
+- [plot_medsitu_frac_mass_trend.py](./plotting_scripts/plot_medsitu_frac_mass_trend.py) for recreating Figure 2 (right). (Needs step: 4 )
 
-- [plot_in_ex_frac_mass_trend](./plot_in_ex_frac_mass_trend.py) for recreating Figure 1 (left). (Needs steps: - )
-
-(under construction)
+----- everything below is currently being updated -----
