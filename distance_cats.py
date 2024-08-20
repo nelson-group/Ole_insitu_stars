@@ -170,43 +170,30 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
     run = basePath[38]
 
     #introduce mass bins (just for analysis, not for computation):
-    groups = il.groupcat.loadHalos(basePath, start_snap, fields = ['Group_M_Crit200','GroupFirstSub'])
-    group_masses = groups['Group_M_Crit200']*1e10/h_const
-
-    #differentiate between halos of dwarf / milky way / group size
-    dwarf_ids = np.where(np.logical_and(group_masses > 10**(10.8), group_masses < 10**(11.2)))[0]
-    mw_ids = np.where(np.logical_and(group_masses > 10**(11.8), group_masses < 10**(12.2)))[0]
-    group_ids = np.where(np.logical_and(group_masses > 10**(12.6), group_masses < 10**(13.4)))[0]
-    giant_ids = np.where(group_masses > 10**(13.4))[0]
-
-    #find ids of associated centrals
-    sub_ids_dwarfs = groups['GroupFirstSub'][dwarf_ids]
-    sub_ids_mw = groups['GroupFirstSub'][mw_ids]
-    sub_ids_groups = groups['GroupFirstSub'][group_ids]
-    sub_ids_giants = groups['GroupFirstSub'][giant_ids]
-    central_ids = groups['GroupFirstSub'][:]
-    
-    del groups, group_masses, dwarf_ids, mw_ids, group_ids, giant_ids
+    central_ids = il.groupcat.loadHalos(basePath, start_snap, fields = ['GroupFirstSub'])
 
     sub_ids = np.arange(num_subs)
 
-    #Filter out halos without any subhalo and satellites
-    subhaloFlag = np.zeros(num_subs, dtype = np.ubyte)
-    subhaloFlag[central_ids[np.where(central_ids != -1)]] = 1
+    # load subhalo flag
+    assert isfile('/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + '/subhaloFlag_' + stype + '.hdf5'), 'File with subhalo flags does not exist!'
+    f = h5py.File('/vera/ptmp/gc/olwitt/auxCats/' + basePath[32:39] + '/subhaloFlag_' + stype + '.hdf5','r')
+    subhaloFlag = f['subhaloFlag'][:]
+    f.close()
     
     #load MPB trees
     trees = loadMPBs(basePath, start_snap, ids = sub_ids, fields = ['SubfindID'])
     
     #load data from files ---------------------------------------------------------------------------------
-    sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5','r') 
-    is_extrapolated = sub_positions['is_extrapolated'][:]
-    
+    assert isfile('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5'),\
+            f'File with subhalo position histories does not exist!'
+    sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPos_new_extrapolated.hdf5','r')  
     #load subhalo positions (99 instead of start_snap as they were computed for start_snap = 99)
     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,99-target_snap,:]
-    
     sub_positions.close()
     
     if stype.lower() in ['insitu', 'exsitu']:
+        assert isfile('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{target_snap}.hdf5'),\
+                f'File with parent indices does not exist!'
         file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/parent_indices_{target_snap}.hdf5'
         f = h5py.File(file,'r')
 
@@ -235,6 +222,7 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
         stype = 'dm'
         
         file = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/dm_indices_{target_snap}.hdf5'
+        assert isfile(file), f'File with dark matter indices does not exist!'
         f = h5py.File(file,'r')
 
         parent_indices = f[f'dm_indices'][:]
@@ -247,45 +235,11 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
         raise Exception('Invalid star/particle type!')
     # ^ offsets for the parent index table, that's why at snapshot 99
     
-    
-    
-    #which galaxies? ----------------------------------------------------------------------------------------
-    not_extrapolated = np.nonzero(np.logical_not(is_extrapolated))[0]
-    subhaloFlag[not_extrapolated] = 0
-    
-    del is_extrapolated, not_extrapolated
-    #test, which galaxies have zero tracers of insitu stars
-    # (this already excludes all galaxies without any stars, since they can't have insitu stars)    
-    noGalaxy = isSubGalaxy(sub_ids, final_offsets)
-    
-    #only use galaxies that have at least one tracer particle (at z=0) AND have an extrapolated SubhaloPos entry
-    #all galaxies without extrapolated sub_pos history or only 1 tracer: -1
-    subhaloFlag[np.nonzero(noGalaxy)[0]] = 0
-    print('# of galaxies with 0 tracers: ', np.nonzero(noGalaxy)[0].shape[0])
-    del noGalaxy
-    
     #now aquire the correct virial radii (consider only those galaxies that are still centrals):
     #-2 bc. GroupFirstSub could contain -1's
     shmr = np.zeros(num_subs, dtype = np.float32)
     target_sub_ids = np.full(num_subs, -2, dtype = np.int32)
     r_vir = np.zeros(num_subs, dtype = np.float32)
-    
-    #tree check: find missing trees:
-    missing = []
-    counter = 0
-    tree_check = list(trees)
-    for i in range(num_subs):
-        if i != tree_check[counter]:
-            missing.append(i)
-            i += 1
-            continue
-        counter += 1
-        
-    for i in range(sub_ids.shape[0]):
-        if sub_ids[i] in missing or sub_ids[i] >= num_subs:
-            subhaloFlag[i] = 0
-            
-    #<until here, subhaloFlag is identical for every snapshot>
     
     #only load subfindIDs of subhalos with Flag=1
     for i in range(sub_ids.shape[0]):
@@ -301,8 +255,8 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
     
     #check first whether there are any halos at all
     if isinstance(groupFirstSub, dict):
-        print(f'No groups at snapshot {target_snap}! -> return = 3*[-1]')
-        return 3*(np.array([-1]),)
+        print(f'No groups at snapshot {target_snap}! -> return = 4*[-1]')
+        return 4*(np.array([-1]),)
         
     central_sub_ids_at_target_snap, GFS_inds, TSID_inds = np.intersect1d(groupFirstSub, target_sub_ids, return_indices = True)
     r_vir_cat = il.groupcat.loadHalos(basePath, target_snap, fields = ['Group_R_Crit200'])[GFS_inds]
@@ -311,6 +265,8 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
                                          ['SubhaloHalfmassRadType'])[central_sub_ids_at_target_snap,4]
     
     #activate if necessary:
+    assert isfile(f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/SubhaloHalfmassRad_Gas_Sfr_{target_snap}.hdf5'),\
+          'File with starforming gas halfmass radii does not exist.'
     sfr_gas_cat = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/SubhaloHalfmassRad_Gas_Sfr_{target_snap}.hdf5'
     f = h5py.File(sfr_gas_cat, 'r')
     sfr_gas_hmr = f['SubhaloHalfmassRad_Gas_Sfr'][:]
@@ -370,6 +326,8 @@ def distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr):
     if stype in ['insitu', 'exsitu']:
         # load starformation snapshots to compute star formation distances
         if stype == 'insitu':
+            assert isfile('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5'),\
+                  'File with star formation snapshots does not exist!'
             f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/star_formation_snapshots.hdf5','r')
             star_formation_snaps = f['star_formation_snapshot'][:]
             f.close()
@@ -417,11 +375,7 @@ assert isdir('/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + '/distanc
 
 inside_radius, subhaloFlag, final_offsets, star_formation_distances = distance_cats(basePath, stype, start_snap, target_snap, use_sfr_gas_hmr)
 
-user = '/vera/ptmp/gc/olwitt'
-
-
 filename = '/vera/ptmp/gc/olwitt/' + stype + '/' + basePath[32:39] + f'/distance_cats/distance_cats_{target_snap}.hdf5'
-
 f = h5py.File(filename,'w')
 
 f.create_dataset('tracers_inside_radius',data = inside_radius)
