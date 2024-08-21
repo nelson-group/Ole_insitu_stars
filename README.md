@@ -83,7 +83,13 @@ Many computations need others as a basis. Here is a guide on the correct order t
 
 7. Execute higher level code, needs step 6.
 
-- Run [lagrangian_regions_times.py](./lagrangian_regions_times.py)
+- Run [lagrangian_regions_times.py](./lagrangian_regions_times.py) for all snapshots to compute the median tracer distances. Use return_profiles = True and other settings to obtain radial profiles of the tracer fraction for a single or all galaxies.
+
+- Run [baryonic_lagrangian_regions_cat.py](./baryonic_lagrangian_region_cat.py) to compute several measures characterizing the spatial extent of the baryonic lagrangian region of the in-situ stellar content of halos.
+
+8. Execute higher level code, needs step 7.
+
+- Run [insitu_form_snap.py](./insitu_form_snap.py) for retreiving the formation snapshot of the in-situ stellar content of halos.
 
 Now you should have all catalogs to proceed with creating the plots (here the files are displayed in the order of the plots in the paper). Use the following files:
 
@@ -95,4 +101,22 @@ Now you should have all catalogs to proceed with creating the plots (here the fi
 
 - [plot_medsitu_frac_mass_trend.py](./plotting_scripts/plot_medsitu_frac_mass_trend.py) for recreating Figure 2 (right). (Needs step: 4 )
 
------ everything below is currently being updated -----
+- [plot_mean_infall_times_image.py](./plotting_scripts/plot_mean_infall_times_image.py) for recreating Figure 3. (Needs step: 6 )
+
+- [plot_tracer_frac_rad_prof_evolution.py](./plotting_scripts/plot_tracer_frac_rad_prof_evolution.py) for recreating Figure 4. (Needs step: 7, for cumulative = True and specific single subhalo ID [otherwise modify the code])
+
+- [plot_tracer_frac_evolution.py](./plotting_scripts/plot_tracer_frac_evolution.py) for recreating Figure 5. (Needs step: 6 )
+
+- [plot_other_gal_frac_evolution.py](./plotting_scripts/plot_other_gal_frac_evolution.py) for recreating Figure 6. (Needs step: 6 )
+
+- [plot_cumulative_radial_profiles.py](./plotting_scripts/plot_cumulative_radial_profiles.py) for recreating Figure 7. (Needs step: 7, for cumulative = True)
+
+- [plot_lagr_hmr_mass_trend.py](./plotting_scripts/plot_lagr_hmr_mass_trend.py) for recreating Figure 8. (Needs step: 7, no profiles necessary)
+
+- [plot_formation_times_mass_trend.py](./plotting_scripts/plot_formation_times_mass_trend.py) for recreating Figure 9. (Needs step: 8 )
+
+- [plot_accretion_channels_mass_trend.py](./plotting_scripts/plot_accretion_channels_mass_trend.py) for recreating Figure 10. (Needs step: 6 )
+
+- [plot_specific_time_diffs_mass_trend.py](./plotting_scripts/plot_specific_time_diffs_mass_trend.py) for recreating Figure 11. (Needs step: 5 )
+
+- [plot_bar_lagr_reg_mass_trend.py](./plotting_scripts/plot_bar_lagr_reg_mass_trend.py) for recreating Figure 12. (Needs step: 7 )
