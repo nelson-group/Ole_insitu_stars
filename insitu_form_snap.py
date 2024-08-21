@@ -16,8 +16,10 @@ def formation_snapshot(hmr, subhaloFlag, snaps, num, z_arr):
     num_ac_types = hmr.shape[3]
     form_snap = np.zeros((num_subs, num_situ_types, num_ac_types), dtype = np.float32)
 
-    for situ_type, ac_type in np.ndindex(hmr.shape[2:]): #loop over all/med-situ/in-situ and accretion channels
-        for i in range(num_subs): #loop over all galaxies
+    # loop over all/med-situ/in-situ and accretion channels
+    for situ_type, ac_type in np.ndindex(hmr.shape[2:]):
+        # loop over all galaxies
+        for i in range(num_subs):
             if subhaloFlag[i] == 0:
                 form_snap[i, situ_type, ac_type] = np.nan
                 continue
@@ -36,7 +38,8 @@ def formation_snapshot(hmr, subhaloFlag, snaps, num, z_arr):
                 continue
             
             ind = np.where(r_dist[1:] * r_dist[:-1] < 0)[0]
-            if ind.size == 0: #if there's no match at all, put snapshot 0 => most likely the hmr hasn't reached one yet
+            # if there's no match at all, put snapshot 0 => most likely the hmr hasn't reached one yet
+            if ind.size == 0:
                 form_snap[i, situ_type, ac_type] = np.nan
                 continue
     #         if len(ind.shape) >1:
@@ -58,7 +61,7 @@ def formation_redshifts(run, stype):
 
     start = time.time()
     file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_99.hdf5'
-    #assert isfile(file), 'filename wrong'
+    assert isfile(file), 'Lagrangian regions file does not exist!'
     f = h5py.File(file,'r')
     arr = f['lagrangian_regions_r_vir'][:,:,:] #(sub_id,regular/igm/mergers), (all tracers, med-situ, in-situ)
     subhaloFlag = f['subhaloFlag'][:]
@@ -74,6 +77,7 @@ def formation_redshifts(run, stype):
     del_counter = 0
     for i in range(snaps.size):
         file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/lagrangian_regions/lagrangian_regions_{snaps[i]}.hdf5'
+        assert isfile(file), f'Lagrangian regions file at snapshot {snaps[i]} does not exist!'
         f = h5py.File(file,'r')
         if f['lagrangian_regions_shmr'].shape[0] == 1:
             tmp_snaps = np.delete(tmp_snaps, i - del_counter)
@@ -106,6 +110,7 @@ def formation_redshifts(run, stype):
     end_form_snap = time.time()
     print('formation snapshot computation complete in ',end_form_snap-end_loading)
     
+    assert isdir(f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}'), 'Directory does not exist!'
     f = h5py.File(f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/sub_form_redshifts.hdf5','w')
     f.create_dataset('formation_redshifts_shmr',data = form_z_shmr)
     f.create_dataset('formation_redshifts_r_vir',data = form_z_r_vir)

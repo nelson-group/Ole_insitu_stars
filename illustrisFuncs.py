@@ -35,16 +35,16 @@ def compute_z_form(central_ids, trees, z, snap):
         z_form[i] = z[int(ind2)]
     return done, z_form 
     
-def halo_form_snap(basePath, snap, central_ids = 1, field = 'Group_M_Crit200'):
+def halo_form_snap(basePath, snap, central_ids = None, field = 'Group_M_Crit200'):
     start = time.time()
     z = give_z_array(basePath)
-    if type(central_ids) == int:
+    if central_ids is None:
         groupFirstSubs = il.groupcat.loadHalos(basePath, snap, fields = ['GroupFirstSub'])
-        central_ids = groupFirstSubs[np.where(groupFirstSubs != -1)[0][:central_ids]]
+        central_ids = groupFirstSubs[np.where(groupFirstSubs != -1)[0]]
     trees = loadMPBs(basePath, snap, central_ids, fields = [field])
     end_loading = time.time()
     print('loading done in ',end_loading - start)
-    masses = np.empty((central_ids.shape[0],100))
+    masses = np.empty((central_ids.shape[0],100), dtype = np.float32)
     check = list(trees)
     missing = []
     counter = 0
@@ -181,3 +181,33 @@ def find_tracers_of_subs(subs, offsets):
 
     res = res[:counter]
     return res
+
+@jit(nopython = True)
+def get_time_difference_in_Gyr(a0, a1):
+    omega_lambda = 0.6911
+    omega_m = 0.3089
+    h = 0.6774
+    H0 = 3.2407789e-18 #in s^-1
+    
+    SEC_PER_MEGAYEAR = 1000000 * 365 * 86400 
+    
+    factor1 = 2.0 / (3.0 * np.sqrt(omega_lambda))
+
+    term1   = np.sqrt(omega_lambda / omega_m) * a0**1.5
+    term2   = np.sqrt(1 + omega_lambda / omega_m * a0**3)
+    factor2 = np.log(term1 + term2)
+
+    t0 = factor1 * factor2
+
+    term1   = np.sqrt(omega_lambda / omega_m) * a1**1.5
+    term2   = np.sqrt(1 + omega_lambda / omega_m * a1**3)
+    factor2 = np.log(term1 + term2)
+
+    t1 = factor1 * factor2
+
+    result = t1 - t0
+
+    time_diff = result / (H0 * h) #now in seconds
+    time_diff /= SEC_PER_MEGAYEAR * 1000 #now in gigayears
+
+    return time_diff

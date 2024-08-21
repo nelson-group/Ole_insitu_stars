@@ -11,7 +11,7 @@ from numba import jit,njit
 def find_situ_type_for_every_star(situ, medsitu, numTracersInParents):
     res = situ.copy().astype(np.byte)
     num_insitu_stars = numTracersInParents.shape[0]
-    del situ
+    # del situ
     insituStarOffsets = funcs.insert(np.cumsum(numTracersInParents),0,0)
     
     insitu = np.where(res == 1)[0]
@@ -39,21 +39,27 @@ def insitu_catalog(run, stype, start_snap):
     
     # catalogs to decide whether star is in-situ or med-situ
     
-    f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/star_formation_snapshots.hdf5','r')
-    star_formation_snaps = f['star_formation_snapshot'][:]
-    f.close()
+    # f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/star_formation_snapshots.hdf5','r')
+    # star_formation_snaps = f['star_formation_snapshot'][:]
+    # f.close()
     
-    file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/infall_and_leaving_times.hdf5'
-    f = h5py.File(file,'r')
-    galaxy_infall_snaps = f['galaxy_infall'][:]
-    halo_infall_snaps = f['halo_infall'][:]
-    f.close()
+    # file = '/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/infall_and_leaving_times.hdf5'
+    # f = h5py.File(file,'r')
+    # galaxy_infall_snaps = f['galaxy_infall'][:]
+    # halo_infall_snaps = f['halo_infall'][:]
+    # f.close()
     
+    f = h5py.File('/vera/ptmp/gc/olwitt/' + stype + f'/TNG50-{run}/star_formation_distances.hdf5','r')
+    star_formation_distances = f['star_formation_distances'][:]
+    f.close()
+
     #med-situ stars: either formed before infall into galaxy or never entered galaxy at all (but star formed after infall into halo)
-    medsitu = np.where(np.logical_or(np.logical_and(star_formation_snaps < galaxy_infall_snaps, galaxy_infall_snaps != -1),\
-                                     np.logical_and(galaxy_infall_snaps == -1, star_formation_snaps > halo_infall_snaps)))[0]
+    # medsitu = np.where(np.logical_or(np.logical_and(star_formation_snaps < galaxy_infall_snaps, galaxy_infall_snaps != -1),\
+    #                                  np.logical_and(galaxy_infall_snaps == -1, star_formation_snaps > halo_infall_snaps)))[0]
     
-    medsitu_tmp = np.zeros(star_formation_snaps.shape[0], dtype = np.byte)
+    medsitu = np.where(star_formation_distances > 2)[0]
+    
+    medsitu_tmp = np.zeros(star_formation_distances.shape[0], dtype = np.byte)
     medsitu_tmp[medsitu] = 1
     medsitu = medsitu_tmp.copy()
     del medsitu_tmp
@@ -85,8 +91,8 @@ start_snap = 99
 
 cat, flags = insitu_catalog(run, stype, start_snap)
 
-""" file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/StellarAssembly_{start_snap}.hdf5'
+file = f'/vera/ptmp/gc/olwitt/auxCats/TNG50-{run}/StellarAssembly_{start_snap}_v2.hdf5'
 f = h5py.File(file,'w')
 f.create_dataset('stellar_assembly', data = cat)
 f.create_dataset('subhalo_flag', data = flags)
-f.close() """
+f.close()

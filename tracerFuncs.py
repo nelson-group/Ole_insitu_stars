@@ -442,50 +442,6 @@ def TraceBackAllInsituStars(basePath,start_snap,target_snap):
     result.close()
     return
 
-# def AllTracerProfile(basePath,start_snap,target_snap):
-#     header = il.groupcat.loadHeader(basePath,target_snap)
-#     redshift = header['Redshift']
-#     h_const = header['HubbleParam']
-#     boxSize = header['BoxSize']
-    
-#     parent_indices = h5py.File('files/'+basePath[32:39]+'/parent_indices_redshift_{:.1f}.hdf5'.format(redshift),'r')
-#     sub_positions = h5py.File('files/'+basePath[32:39]+'/SubhaloPosAtAllSnaps_v2-Copy1_extrapolated.hdf5','r') 
-#     #possibly the position at that snapshot had to be extrapolated
-    
-#     sub_pos_at_target_snap = sub_positions['SubhaloPos'][:,:,:]
-#     num_subs = sub_pos_at_target_snap.shape[0]
-
-#     parent_indices_data = parent_indices['parent_indices'][:,:]
-#     tracers_in_parent_offset = parent_indices['tracers_in_parents_offset'][:]
-    
-#     all_gas_pos = il.snapshot.loadSubset(basePath,target_snap,'gas',fields=['Coordinates'])
-
-#     insituStarsInSubOffset_start_snap = tF.insituStarsInSubOffset(basePath, start_snap)
-    
-#     #there might be more tracers -> parents in one galaxy at higher redshifts than insitu stars at redshift 0
-#     final_offsets = tF.tracersInSubhalo(insituStarsInSubOffset_start_snap, tracers_in_parent_offset)
-    
-#     rad_profile = np.zeros(1)
-#     for i in range(1,num_subs):
-#         parent_indices_of_sub = parent_indices_data[int(final_offsets[i-1]):int(final_offsets[i]),:]
-#         gas_parent_indices = parent_indices_of_sub[np.where(parent_indices_of_sub[:,1]==0)[0],0]
-#         gas_pos = all_gas_pos[gas_parent_indices.astype('int')]
-    
-#         subhalo_position = sub_pos_at_target_snap[i-1,start_snap-target_snap,:]
-    
-#         rad_dist = np.ones(gas_pos.shape[0])
-#         for j in range(gas_pos.shape[0]):
-#             rad_dist[j] = funcs.dist(subhalo_position,gas_pos[j],boxSize)
-#         rad_profile = np.concatenate((rad_profile,rad_dist))
-        
-#     print(rad_profile.shape)
-#     bins, num = iF.binData(rad_profile[np.where(rad_profile<boxSize)[0]],100)
-
-#     parent_indices.close()
-#     sub_positions.close()
-#     return bins, num
-# >>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
-
 def insituStarsInSubOffset(basePath, snap):
     """compute for an array of insitu stars, how many of them are in each subhalo
     """
@@ -530,20 +486,12 @@ def exsituStarsInSubOffset(basePath, snap):
 def compute_offsets(starsInSubOffset, numStarsInSubs, insitu):
     insituStarsInSubOffset = np.zeros(starsInSubOffset.shape[0], dtype = np.int32)
     for i in nb.prange(1,starsInSubOffset.shape[0]):
-# =======
-#     insitu = check['InSitu'][:] #1 if star is formed insitu and 0 otherwise
-#     check.close()
-    
-#     insituStarsInSubOffset = np.zeros(starsInSubOffset.shape[0])
-#     for i in range(1,starsInSubOffset.shape[0]):
-# >>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
         star_indices = np.arange(starsInSubOffset[i-1],starsInSubOffset[i-1] +\
                                  numStarsInSubs[i-1])
         insitu_indices = insitu[star_indices]
         insituStarsInSubOffset[i] = len(np.nonzero(insitu_indices)[0])
     
     insituStarsInSubOffset = np.cumsum(insituStarsInSubOffset)
-# <<<<<<< HEAD
     return insituStarsInSubOffset
 
 
@@ -650,7 +598,7 @@ def compute_offsets(starsInSubOffset, numStarsInSubs, insitu):
 #     f.close()
     
     
-    return hmr, form_snap
+    # return hmr, form_snap
 
 #@jit(nopython = True, parallel = True)
 def DM_in_2_shmr(DM_coords, sub_pos, dmInSubOffset, numDMInSubs, shmr, cut, boxSize):
@@ -721,7 +669,4 @@ def traceBack_DM(basePath, start_snap, target_snap):
     f.close()
     done = time.time()
     print('time to run: ', done - start)
-    return #target_DM_inds, inside_offsets
-# =======
-#     return insituStarsInSubOffset
-# >>>>>>> de57ecd0d8a38fa9869bb489726e23ead107bc54
+    return
