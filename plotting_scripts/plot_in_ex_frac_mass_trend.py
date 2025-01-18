@@ -118,7 +118,7 @@ _, med_bins, medy16, medy84 =  funcs.binData_med(log_stellar_mass, medfracs, 20)
 mpl.rcParams['xtick.labelsize'] = 22
 mpl.rcParams['ytick.labelsize'] = 22
 
-fig, ax = plt.subplots(1,1, figsize = (8,6))
+fig, ax = plt.subplots(1,1, figsize = (16,9))
 plt.hist2d(log_stellar_mass, infracs, cmap = 'Blues',norm = mpl.colors.LogNorm(), range = [[9,12],[0,1]],\
             bins = (64,64), rasterized = True)
 cb = plt.colorbar()
@@ -166,4 +166,5 @@ fig.tight_layout()
 # specify path to your output directory
 dirname = 'pics/ex-situ_in-situ_mass_fraction'
 assert isdir(dirname), 'Directory not found'
-plt.savefig(dirname + f'/ex-in-situ_mass_frac_50-{run}.pdf',format = 'pdf')
+# plt.savefig(dirname + f'/ex-in-situ_mass_frac_50-{run}.pdf',format = 'pdf')
+plt.savefig(dirname + f'/ex-in-situ_mass_frac_50-{run}.jpg',format = 'jpg')
