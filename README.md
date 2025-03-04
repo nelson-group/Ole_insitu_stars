@@ -1,5 +1,7 @@
 # Tracing the origin of gas fuelling in-situ star formation.
 
+arXiv: https://arxiv.org/abs/2503.00111
+
 ### Abstract
 
 We use the TNG50 cosmological magnetohydrodynamical simulation to study the origin and history of in-situ stars. We trace the gas from which these stars form and analyze formation locations, infall times, and several accretion channels. 
